@@ -1,0 +1,159 @@
+%{
+(* Put util functions here. *)
+open Fmabsyn;
+
+fun mkintop2 opr (Int n1, Int n2)  = Int (opr (n1, n2))
+fun mkboolop2 opr (Int n1, Int n2) = Int (opr (n1, n2))
+fun mkrelop2 opr (Int n1, Int n2)  = Int (if opr (n1, n2) then 1 else 0)
+
+val lor  : int * int -> int = op *
+val land : int * int -> int = op +
+val lneg = fn b => if b = 0 then 1 else 0
+%}
+
+%token <int> INT
+%token <string> NAME
+%token PLUS MINUS TIMES DIV MOD BITAND BITOR XOR
+%token EQ NE LT LE GE GT
+%token ASSIGN COLON COMMA DASHARROW SEMI 
+%token INTTYPE BOOLTYPE
+%token AND OR NOT
+%token TRUE FALSE
+%token ELSE IF IMPORT MAIN PROC PRINT RETURN THEN VAR WHILE
+%token LBRACE RBRACE LPAR RPAR LSQUARE RSQUARE
+%token EOF
+%token JUNK
+
+%left BITOR			/* lowest precedence */
+%left BITAND
+%nonassoc EQ NE LT LE GE GT
+%left PLUS MINUS                
+%left TIMES DIV MOD        	/* highest precedence  */
+
+%start Main
+%type <unit> Main Ptext 
+%type <unit> Vdecls Fdecls Sblock Stmts Params
+%type <unit> Vdecl Fdecl Stmt AssnStmt IfStmt WhileStmt PrintStmt
+%type <unit> Typeexp Param Ftype
+%type <unit> Expr NumExpr BoolExpr
+/*
+%type <Fmabsyn.sourceexpr> Main Ptext Expr SExpr AppExpr AExpr
+%type <Fmabsyn.sourceexpr list> Exprs
+%type <string * Fmabsyn.sourceexpr> Defn
+%type <(string * Fmabsyn.sourceexpr) list> Defns
+%type <int * string list * Fmabsyn.sourceexpr> Alt
+%type <(int * string list * Fmabsyn.sourceexpr) list> Alts
+%type <string list> Vars 
+*/
+%%
+
+Main:
+    // Compunit EOF
+    Ptext EOF                            { } // $1
+;
+
+/* Compunit: 
+    Imports Ptext                       { } // later
+; */
+
+/* Imports:
+                            { [ ] } // recursively include parse trees?
+;
+*/
+
+Ptext:
+    Vdecls Fdecls MAIN Sblock           { } // record?
+;
+Vdecls:
+    /* empty */                         {}
+  | Vdecl SEMI Vdecls                   {}
+;
+Vdecl: 
+    VAR NAME COLON Typeexp              {}
+;
+Typeexp: 
+    INTTYPE                             {}
+  | BOOLTYPE                            {}
+;
+Fdecls:
+    /* empty */                         {}
+  | Fdecl Fdecls                        {}
+;
+Fdecl: 
+  PROC NAME LPAR Params RPAR Ftype Sblock {}
+;
+Params: 
+    /* empty */                         {}
+  | Param                               {}
+  | Param COMMA Params                  {}
+;
+Param: 
+  NAME COLON Typeexp                  {}
+;
+Ftype: 
+    /* empty */                         {}
+  | DASHARROW Typeexp                   {}
+;
+Sblock: 
+    LBRACE Vdecls Stmts RBRACE          {}
+;
+Stmts: 
+    /* empty */                         {}
+  | Stmt SEMI Stmts                     {}
+;
+Stmt: 
+    AssnStmt                            {}
+//  | ForStmt                             {}
+  | WhileStmt                           {}
+  | IfStmt                              {}
+  | PrintStmt                           {}
+;
+AssnStmt:
+    NAME ASSIGN Expr                    {}
+;
+//ForStmt:
+//    FOR 
+WhileStmt:
+    WHILE LPAR Expr RPAR Sblock     {}
+;
+IfStmt:
+    IF LPAR Expr RPAR Sblock        {}
+  | IF LPAR Expr RPAR ELSE Sblock   {}
+;
+PrintStmt:
+    PRINT Expr                      {}
+;
+// Encode expression type at syntax level?
+Expr:
+    NumExpr                             {}
+  | BoolExpr                            {}  // IfExpr could be both
+// | StringExpr
+;
+NumExpr:   // This is all blown open once user-defined types.
+    INT                                 {}
+  | LPAR NumExpr RPAR               {}
+  | IF LPAR BoolExpr RPAR THEN NumExpr ELSE NumExpr {}
+  | NumExpr DIV NumExpr                 { }
+  | NumExpr MOD NumExpr                 { }
+  | NumExpr TIMES NumExpr               { }
+  | NumExpr PLUS NumExpr                { }
+  | NumExpr MINUS NumExpr               { }
+  | NumExpr XOR NumExpr                { }
+  | NumExpr BITOR NumExpr               { }
+  | NumExpr BITAND NumExpr              { }
+;
+BoolExpr:
+    TRUE                                    {}
+  | FALSE                                   {}
+  | LPAR BoolExpr RPAR                  {} // ambiguous?
+  | NOT BoolExpr                            {}
+  | BoolExpr AND BoolExpr                   {}
+  | BoolExpr OR BoolExpr                    {}
+  | NumExpr EQ NumExpr                      { }
+  | NumExpr NE NumExpr                      { }
+  | NumExpr LT NumExpr                      { }
+  | NumExpr LE NumExpr                      { }
+  | NumExpr GT NumExpr                      { }
+  | NumExpr GE NumExpr                      { }
+;
+// StringExpr
