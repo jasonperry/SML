@@ -1,45 +1,6 @@
 {
   open Obj Lexing Fmparse; (* Needs parser for tokens *)
 
-(*datatype token = (* Was in "Parser" *)
-    ASSIGN
-  | BITAND
-  | BITOR
-  | COLON               
-  | COMMA
-  | DASHARROW
-  | DIV
-  | ELSE
-  | EOF
-  | EQ
-  | GE
-  | GT
-  | IF
-  | INT of int
-  | INTTYPE
-  | LAMBDA
-  | LBRACE
-  | LE
-  | LPAR
-  | LSQUARE
-  | LT
-  | MINUS
-  | MOD
-  | NAME of string
-  | NE
-  | PLUS
-  | PROC
-  | RBRACE
-  | RETURN
-  | RPAR
-  | RSQUARE
-  | SEMI
-  | THEN
-  | TIMES
-  | VAR
-  | WHILE
-  | XOR ; *)
-  
  exception LexicalError of string * int * int (* (message, loc1, loc2) *)
 
  fun lexerError lexbuf s = 
