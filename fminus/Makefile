@@ -1,0 +1,44 @@
+# Unix Makefile for lexyacc example
+
+MOSMLHOME=${HOME}/mosml
+MOSMLTOOLS=camlrunm $(MOSMLHOME)/tools
+MOSMLC=mosmlc -c
+MOSMLL=mosmlc
+MOSMLLEX=mosmllex
+MOSMLYACC=mosmlyac
+
+all: Fmabsyn.uo Fmlexer.uo Fmparse.uo # Main.uo
+#	mosml load
+
+Fmparse.sml Fmparse.sig: Fmparse.grm
+	$(MOSMLYACC) Fmparse.grm
+
+.SUFFIXES :
+.SUFFIXES : .sml .sig .ui .uo .mlp .lex .c .o
+
+# gives how to change the extension. cool!
+.sig.ui:
+	$(MOSMLC) $<
+
+.sml.uo:
+	$(MOSMLC) $<
+
+.lex.sml:
+	$(MOSMLLEX) $<
+
+depend: Fmlexer.sml Fmparse.sml 
+	rm -f Makefile.bak
+	mv Makefile Makefile.bak
+	$(MOSMLTOOLS)/cutdeps < Makefile.bak > Makefile
+	$(MOSMLTOOLS)/mosmldep >> Makefile
+
+clean:
+	rm -f Fmparse.sig Fmparse.sml Fmlexer.sml
+	rm -f *.ui *.uo
+	rm -f Makefile.bak
+
+### Dependencies (can generate automatically?)
+Fmparse.ui: Fmabsyn.uo 
+Fmparse.uo: Fmparse.ui Fmabsyn.uo 
+Fmlexer.uo: Fmparse.ui 
+# Main.uo: Parser.ui Lexer.uo 
