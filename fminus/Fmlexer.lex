@@ -1,7 +1,7 @@
 {
-  open Obj Lexing; (* Parser; (* redundant? Gets put in the .lex.sml *) *)
+  open Obj Lexing Fmparse; (* Needs parser for tokens *)
 
-datatype token = (* Was in "Parser" *)
+(*datatype token = (* Was in "Parser" *)
     ASSIGN
   | BITAND
   | BITOR
@@ -38,7 +38,7 @@ datatype token = (* Was in "Parser" *)
   | TIMES
   | VAR
   | WHILE
-  | XOR ;
+  | XOR ; *)
   
  exception LexicalError of string * int * int (* (message, loc1, loc2) *)
 
@@ -61,13 +61,22 @@ datatype token = (* Was in "Parser" *)
          "var"          => VAR
        | "proc"         => PROC
        | "int"          => INTTYPE
+       | "bool"         => BOOLTYPE
 (*       | "case"         => CASE
        | "of"           => OF *)
        | "if"           => IF
+       | "import"       => IMPORT
+       | "main"         => MAIN
        | "then"         => THEN
        | "else"         => ELSE
        | "while"        => WHILE
+       | "and"          => AND
+       | "or"           => OR
+       | "not"          => NOT
+       | "true"         => TRUE
+       | "false"        => FALSE
        | "return"       => RETURN 
+       | "print"        => PRINT
        | _              => NAME s;
 
  }

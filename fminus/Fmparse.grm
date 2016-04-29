@@ -2,13 +2,15 @@
 (* Put util functions here. *)
 open Fmabsyn;
 
+(* structure As = Fmabsyn; *)
+(*
 fun mkintop2 opr (Int n1, Int n2)  = Int (opr (n1, n2))
 fun mkboolop2 opr (Int n1, Int n2) = Int (opr (n1, n2))
 fun mkrelop2 opr (Int n1, Int n2)  = Int (if opr (n1, n2) then 1 else 0)
 
 val lor  : int * int -> int = op *
 val land : int * int -> int = op +
-val lneg = fn b => if b = 0 then 1 else 0
+val lneg = fn b => if b = 0 then 1 else 0 *)
 %}
 
 %token <int> INT
@@ -24,18 +26,28 @@ val lneg = fn b => if b = 0 then 1 else 0
 %token EOF
 %token JUNK
 
-%left BITOR			/* lowest precedence */
-%left BITAND
+%left OR /* lowest precedence */
+%left AND
 %nonassoc EQ NE LT LE GE GT
-%left PLUS MINUS                
+%left BITOR	
+%left XOR		
+%left BITAND
+%left PLUS MINUS 
 %left TIMES DIV MOD        	/* highest precedence  */
 
 %start Main
-%type <unit> Main Ptext 
-%type <unit> Vdecls Fdecls Sblock Stmts Params
-%type <unit> Vdecl Fdecl Stmt AssnStmt IfStmt WhileStmt PrintStmt
-%type <unit> Typeexp Param Ftype
-%type <unit> Expr NumExpr BoolExpr
+%type <Fmabsyn.progtext> Main Ptext 
+%type <Fmabsyn.symtable> Vdecls 
+%type <Fmabsyn.fdecl list> Fdecls 
+%type <(Fmabsyn.symtable * Fmabsyn.stmt list)> Sblock
+%type <Fmabsyn.stmt list> Stmts
+%type <Fmabsyn.symtable>  Params 
+%type <Fmabsyn.expr list> Args
+%type <(string * Fmabsyn.valtype)> Vdecl Param
+%type <Fmabsyn.fdecl> Fdecl 
+%type <Fmabsyn.stmt> Stmt AssnStmt IfStmt WhileStmt PrintStmt CallStmt
+%type <Fmabsyn.valtype> Typeexp Ftype 
+%type <Fmabsyn.expr> Expr VarExpr RelExpr AssocExpr
 /*
 %type <Fmabsyn.sourceexpr> Main Ptext Expr SExpr AppExpr AExpr
 %type <Fmabsyn.sourceexpr list> Exprs
@@ -49,7 +61,7 @@ val lneg = fn b => if b = 0 then 1 else 0
 
 Main:
     // Compunit EOF
-    Ptext EOF                            { } // $1
+    Ptext EOF                            { $1 } 
 ;
 
 /* Compunit: 
@@ -62,98 +74,116 @@ Main:
 */
 
 Ptext:
-    Vdecls Fdecls MAIN Sblock           { } // record?
+    Vdecls Fdecls                       { {gdecls=$1, fdecls=$2, main=NONE} }
+  | Vdecls Fdecls MAIN Sblock           { {gdecls=$1, fdecls=$2, 
+                                           main=(SOME $4)} }
 ;
 Vdecls:
-    /* empty */                         {}
-  | Vdecl SEMI Vdecls                   {}
+    /* empty */                         { [] }
+  | Vdecl SEMI Vdecls                   { $1 :: $3 }
 ;
 Vdecl: 
-    VAR NAME COLON Typeexp              {}
+    VAR NAME COLON Typeexp              { ($2, $4) }
 ;
 Typeexp: 
-    INTTYPE                             {}
-  | BOOLTYPE                            {}
+    INTTYPE                             { Int }
+  | BOOLTYPE                            { Bool }
 ;
 Fdecls:
-    /* empty */                         {}
-  | Fdecl Fdecls                        {}
+    /* empty */                         { [] }
+  | Fdecl Fdecls                        { $1 :: $2 }
 ;
 Fdecl: 
-  PROC NAME LPAR Params RPAR Ftype Sblock {}
+  PROC NAME LPAR Params RPAR Ftype Sblock { {fname=$2, rettype=$6,  ldecls=(#1 $7), stmts=(#2 $7)} }
 ;
 Params: 
-    /* empty */                         {}
-  | Param                               {}
-  | Param COMMA Params                  {}
+    /* empty */                         { [] }
+  | Param                               { [$1] }
+  | Param COMMA Params                  { $1 :: $3 }
 ;
 Param: 
-  NAME COLON Typeexp                  {}
+  NAME COLON Typeexp                    { ($1, $3) }
 ;
 Ftype: 
-    /* empty */                         {}
-  | DASHARROW Typeexp                   {}
+    /* empty */                         { Unit }
+  | DASHARROW Typeexp                   { $2 }
 ;
 Sblock: 
-    LBRACE Vdecls Stmts RBRACE          {}
+    LBRACE Vdecls Stmts RBRACE          { ($2, $3) }
 ;
 Stmts: 
-    /* empty */                         {}
-  | Stmt SEMI Stmts                     {}
+    /* empty */                         { [] }
+  | Stmt SEMI Stmts                     { $1 :: $3 }
 ;
 Stmt: 
-    AssnStmt                            {}
-//  | ForStmt                             {}
-  | WhileStmt                           {}
-  | IfStmt                              {}
-  | PrintStmt                           {}
+    AssnStmt                            { $1 }
+//  | ForStmt                           { $1 }
+  | WhileStmt                           { $1 }
+  | IfStmt                              { $1 }
+  | PrintStmt                           { $1 }
+  | CallStmt                            { $1 }
 ;
 AssnStmt:
-    NAME ASSIGN Expr                    {}
+    NAME ASSIGN Expr                    { AssignStmt ($1, $3) }
 ;
 //ForStmt:
 //    FOR 
 WhileStmt:
-    WHILE LPAR Expr RPAR Sblock     {}
+    WHILE LPAR Expr RPAR Sblock         { Fmabsyn.WhileStmt ($3, $5) }
 ;
 IfStmt:
-    IF LPAR Expr RPAR Sblock        {}
-  | IF LPAR Expr RPAR ELSE Sblock   {}
+    IF LPAR Expr RPAR Sblock                   { IfStmt ($3, $5, NONE) }
+  | IF LPAR Expr RPAR Sblock ELSE Sblock       { IfStmt ($3, $5, SOME $7) }
 ;
 PrintStmt:
-    PRINT Expr                      {}
+    PRINT Expr                          { PrintStmt $2 }
+;
+CallStmt:
+    NAME LPAR Args RPAR                 { CallStmt ($1, $3) }
 ;
 // Encode expression type at syntax level?
+Args: 
+    /* empty */                         { [] }
+  | Expr                                { [$1] }     // Allows the dangling comma
+  | Expr COMMA Args                     { $1 :: $3 } // what if a non-var used to call a fun?
+;
+
 Expr:
-    NumExpr                             {}
-  | BoolExpr                            {}  // IfExpr could be both
+    AssocExpr                            { $1 }
+  | RelExpr                              { $1 }
 // | StringExpr
 ;
-NumExpr:   // This is all blown open once user-defined types.
-    INT                                 {}
-  | LPAR NumExpr RPAR               {}
-  | IF LPAR BoolExpr RPAR THEN NumExpr ELSE NumExpr {}
-  | NumExpr DIV NumExpr                 { }
-  | NumExpr MOD NumExpr                 { }
-  | NumExpr TIMES NumExpr               { }
-  | NumExpr PLUS NumExpr                { }
-  | NumExpr MINUS NumExpr               { }
-  | NumExpr XOR NumExpr                { }
-  | NumExpr BITOR NumExpr               { }
-  | NumExpr BITAND NumExpr              { }
+
+VarExpr: 
+    NAME                                { VarExpr $1 }
 ;
-BoolExpr:
-    TRUE                                    {}
-  | FALSE                                   {}
-  | LPAR BoolExpr RPAR                  {} // ambiguous?
-  | NOT BoolExpr                            {}
-  | BoolExpr AND BoolExpr                   {}
-  | BoolExpr OR BoolExpr                    {}
-  | NumExpr EQ NumExpr                      { }
-  | NumExpr NE NumExpr                      { }
-  | NumExpr LT NumExpr                      { }
-  | NumExpr LE NumExpr                      { }
-  | NumExpr GT NumExpr                      { }
-  | NumExpr GE NumExpr                      { }
+// if an expression is a variable you can't tell if its bool or num.
+// so don't encode types at all
+RelExpr:
+    AssocExpr EQ AssocExpr              { RelExpr (Fmabsyn.Eq, $1, $3) }
+  | AssocExpr NE AssocExpr              { RelExpr (Fmabsyn.Ne, $1, $3) }
+  | AssocExpr LT AssocExpr              { RelExpr (Fmabsyn.Lt, $1, $3) }
+  | AssocExpr LE AssocExpr              { RelExpr (Fmabsyn.Le, $1, $3) }
+  | AssocExpr GT AssocExpr              { RelExpr (Fmabsyn.Gt, $1, $3) }
+  | AssocExpr GE AssocExpr              { RelExpr (Fmabsyn.Ge, $1, $3) }
+;
+AssocExpr:
+   INT                                  { ConstExpr $1 }
+  | VarExpr                             { $1 }
+  | LPAR AssocExpr RPAR                 { $2 }
+  | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr { Fmabsyn.IfExpr ($3, $6, $8) }
+  | AssocExpr DIV AssocExpr                     { ArithExpr (Fmabsyn.Div, $1, $3) }
+  | AssocExpr MOD AssocExpr                     { ArithExpr (Fmabsyn.Mod, $1, $3) }
+  | AssocExpr TIMES AssocExpr                   { ArithExpr (Fmabsyn.Times, $1, $3) }
+  | AssocExpr PLUS AssocExpr                    { ArithExpr (Fmabsyn.Plus, $1, $3) }
+  | AssocExpr MINUS AssocExpr                   { ArithExpr (Fmabsyn.Minus, $1, $3) }
+  | AssocExpr XOR AssocExpr                     { ArithExpr (Fmabsyn.Xor, $1, $3) }
+  | AssocExpr BITOR AssocExpr                   { ArithExpr (Fmabsyn.Bitor, $1, $3) }
+  | AssocExpr BITAND AssocExpr                  { ArithExpr (Fmabsyn.Bitand, $1, $3) }
+  | TRUE                                        { ConstBool true }
+  | FALSE                                       { ConstBool false }
+  | NOT AssocExpr                               { NotExpr $2 }
+  | AssocExpr AND AssocExpr                     { BoolExpr (And, $1, $3) }
+  | AssocExpr OR AssocExpr                      { BoolExpr (Or, $1, $3) }
 ;
 // StringExpr

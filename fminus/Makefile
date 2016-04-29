@@ -7,7 +7,7 @@ MOSMLL=mosmlc
 MOSMLLEX=mosmllex
 MOSMLYACC=mosmlyac
 
-all: Fmabsyn.uo Fmlexer.uo Fmparse.uo # Main.uo
+all: Fmabsyn.uo Fmlexer.uo Fmparse.uo Pmain.uo
 #	mosml load
 
 Fmparse.sml Fmparse.sig: Fmparse.grm
@@ -41,4 +41,4 @@ clean:
 Fmparse.ui: Fmabsyn.uo 
 Fmparse.uo: Fmparse.ui Fmabsyn.uo 
 Fmlexer.uo: Fmparse.ui 
-# Main.uo: Parser.ui Lexer.uo 
+Pmain.uo: Fmparse.ui Fmlexer.uo 
