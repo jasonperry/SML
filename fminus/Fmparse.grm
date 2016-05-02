@@ -86,15 +86,15 @@ Vdecl:
     VAR NAME COLON Typeexp              { ($2, $4) }
 ;
 Typeexp: 
-    INTTYPE                             { Int }
-  | BOOLTYPE                            { Bool }
+    INTTYPE                             { FmInt }
+  | BOOLTYPE                            { FmBool }
 ;
 Fdecls:
     /* empty */                         { [] }
   | Fdecl Fdecls                        { $1 :: $2 }
 ;
 Fdecl: 
-  PROC NAME LPAR Params RPAR Ftype Sblock { {fname=$2, rettype=$6,  ldecls=(#1 $7), stmts=(#2 $7)} }
+  PROC NAME LPAR Params RPAR Ftype Sblock { {fname=$2, argdecls=$4, rettype=$6,  body=$7} }
 ;
 Params: 
     /* empty */                         { [] }
@@ -105,7 +105,7 @@ Param:
   NAME COLON Typeexp                    { ($1, $3) }
 ;
 Ftype: 
-    /* empty */                         { Unit }
+    /* empty */                         { FmUnit }
   | DASHARROW Typeexp                   { $2 }
 ;
 Sblock: 
@@ -155,40 +155,39 @@ Args:
 Expr:
     AssocExpr                            { $1 }
   | RelExpr                              { $1 }
+  | LPAR Expr RPAR                       { $2 }
 // | StringExpr
 ;
 
 VarExpr: 
     NAME                                { VarExpr $1 }
 ;
-// if an expression is a variable you can't tell if its bool or num.
-// so don't encode types at all
+// All RelExprs have type bool, but AssocExprs can have type bool also.
 RelExpr:
-    AssocExpr EQ AssocExpr              { RelExpr (Fmabsyn.Eq, $1, $3) }
-  | AssocExpr NE AssocExpr              { RelExpr (Fmabsyn.Ne, $1, $3) }
-  | AssocExpr LT AssocExpr              { RelExpr (Fmabsyn.Lt, $1, $3) }
-  | AssocExpr LE AssocExpr              { RelExpr (Fmabsyn.Le, $1, $3) }
-  | AssocExpr GT AssocExpr              { RelExpr (Fmabsyn.Gt, $1, $3) }
-  | AssocExpr GE AssocExpr              { RelExpr (Fmabsyn.Ge, $1, $3) }
+    AssocExpr EQ AssocExpr                      { CompExpr (Eq, $1, $3) }
+  | AssocExpr NE AssocExpr                      { CompExpr (Ne, $1, $3) }
+  | AssocExpr LT AssocExpr                      { CompExpr (Lt, $1, $3) }
+  | AssocExpr LE AssocExpr                      { CompExpr (Le, $1, $3) }
+  | AssocExpr GT AssocExpr                      { CompExpr (Gt, $1, $3) }
+  | AssocExpr GE AssocExpr                      { CompExpr (Ge, $1, $3) }
+  | NOT RelExpr                                 { NotExpr $2 }
+  | RelExpr AND RelExpr                         { BoolExpr (And, $1, $3) }
+  | RelExpr OR RelExpr                          { BoolExpr (Or, $1, $3) }
 ;
 AssocExpr:
-   INT                                  { ConstExpr $1 }
-  | VarExpr                             { $1 }
-  | LPAR AssocExpr RPAR                 { $2 }
-  | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr { Fmabsyn.IfExpr ($3, $6, $8) }
-  | AssocExpr DIV AssocExpr                     { ArithExpr (Fmabsyn.Div, $1, $3) }
-  | AssocExpr MOD AssocExpr                     { ArithExpr (Fmabsyn.Mod, $1, $3) }
-  | AssocExpr TIMES AssocExpr                   { ArithExpr (Fmabsyn.Times, $1, $3) }
-  | AssocExpr PLUS AssocExpr                    { ArithExpr (Fmabsyn.Plus, $1, $3) }
-  | AssocExpr MINUS AssocExpr                   { ArithExpr (Fmabsyn.Minus, $1, $3) }
-  | AssocExpr XOR AssocExpr                     { ArithExpr (Fmabsyn.Xor, $1, $3) }
-  | AssocExpr BITOR AssocExpr                   { ArithExpr (Fmabsyn.Bitor, $1, $3) }
-  | AssocExpr BITAND AssocExpr                  { ArithExpr (Fmabsyn.Bitand, $1, $3) }
+    INT                                         { ConstExpr $1 }
   | TRUE                                        { ConstBool true }
   | FALSE                                       { ConstBool false }
-  | NOT AssocExpr                               { NotExpr $2 }
-  | AssocExpr AND AssocExpr                     { BoolExpr (And, $1, $3) }
-  | AssocExpr OR AssocExpr                      { BoolExpr (Or, $1, $3) }
+  | VarExpr                                     { $1 }
+  | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr { IfExpr ($3, $6, $8) }
+  | AssocExpr DIV AssocExpr                     { ArithExpr (Div, $1, $3) }
+  | AssocExpr MOD AssocExpr                     { ArithExpr (Mod, $1, $3) }
+  | AssocExpr TIMES AssocExpr                   { ArithExpr (Times, $1, $3) }
+  | AssocExpr PLUS AssocExpr                    { ArithExpr (Plus, $1, $3) }
+  | AssocExpr MINUS AssocExpr                   { ArithExpr (Minus, $1, $3) }
+  | AssocExpr XOR AssocExpr                     { ArithExpr (Xor, $1, $3) }
+  | AssocExpr BITOR AssocExpr                   { ArithExpr (Bitor, $1, $3) }
+  | AssocExpr BITAND AssocExpr                  { ArithExpr (Bitand, $1, $3) }
   | NAME LPAR Args RPAR                         { FunCallExpr ($1, $3) }
 ;
 // StringExpr
