@@ -38,13 +38,13 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %start Main
 %type <Fmabsyn.progtext> Main Ptext 
 %type <Fmabsyn.symtable> Vdecls 
-%type <Fmabsyn.fdecl list> Fdecls 
+%type <Fmabsyn.fdefn list> Fdefns 
 %type <(Fmabsyn.symtable * Fmabsyn.stmt list)> Sblock
 %type <Fmabsyn.stmt list> Stmts
 %type <Fmabsyn.symtable>  Params 
 %type <Fmabsyn.expr list> Args
 %type <(string * Fmabsyn.valtype)> Vdecl Param
-%type <Fmabsyn.fdecl> Fdecl 
+%type <Fmabsyn.fdefn> Fdefn
 %type <Fmabsyn.stmt> Stmt AssnStmt IfStmt WhileStmt PrintStmt CallStmt ReturnStmt
 %type <Fmabsyn.valtype> Typeexp Ftype 
 %type <Fmabsyn.expr> Expr VarExpr RelExpr AssocExpr
@@ -74,8 +74,8 @@ Main:
 */
 
 Ptext:
-    Vdecls Fdecls                       { {gdecls=$1, fdecls=$2, main=NONE} }
-  | Vdecls Fdecls MAIN Sblock           { {gdecls=$1, fdecls=$2, 
+    Vdecls Fdefns                       { {gdecls=$1, fdefns=$2, main=NONE} }
+  | Vdecls Fdefns MAIN Sblock           { {gdecls=$1, fdefns=$2, 
                                            main=(SOME $4)} }
 ;
 Vdecls:
@@ -89,12 +89,13 @@ Typeexp:
     INTTYPE                             { FmInt }
   | BOOLTYPE                            { FmBool }
 ;
-Fdecls:
+Fdefns:
     /* empty */                         { [] }
-  | Fdecl Fdecls                        { $1 :: $2 }
+  | Fdefn Fdefns                        { $1 :: $2 }
 ;
-Fdecl: 
-  PROC NAME LPAR Params RPAR Ftype Sblock { {fname=$2, argdecls=$4, rettype=$6,  body=$7} }
+Fdefn: 
+  PROC NAME LPAR Params RPAR Ftype Sblock { ({fname=$2, argdecls=$4, 
+                                              rettype=$6}, $7) }
 ;
 Params: 
     /* empty */                         { [] }

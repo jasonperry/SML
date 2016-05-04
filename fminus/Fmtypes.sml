@@ -15,7 +15,7 @@ fun lookup ([], _) sym = NONE
     if sym = e then SOME vtype
     else lookup (rest, []) sym
 
-fun flookup (_, []) name = NONE
+fun flookup (_, ([] : fdecl list)) name = NONE
   | flookup (_, {fname, argdecls, rettype}::rest) name =
     if name = fname then SOME (argdecls, rettype) 
     else flookup ([], rest) name
@@ -76,7 +76,7 @@ fun checkexpr decls (ConstExpr i) = T FmInt
                       | T elstype => 
                         if thentype <> elstype
                         then B ["Non-matching types (" ^ (typestr thentype) ^
-                                ", " ^ (typestr elstype) ^ "for then/else"]
+                                ", " ^ (typestr elstype) ^ ") for then/else"]
                         else T thentype)))
   | checkexpr decls (FunCallExpr (fname, fnargs)) = 
     (case flookup decls fname 
@@ -90,7 +90,7 @@ fun checkexpr decls (ConstExpr i) = T FmInt
                   of B errs => errs @ (matchargs ps args) (* Keep going *)
                   | T atype => if atype = ptype
                                then matchargs ps args
-                               else "Non-matching argument types: (" ^ (typestr ptype) ^
+                               else "Non-matching argument types: " ^ (typestr ptype) ^
                                     ", " ^ (typestr atype) :: (matchargs ps args)
          in
              case matchargs params fnargs
@@ -117,7 +117,7 @@ fun checkexpr decls (ConstExpr i) = T FmInt
 (* Type errors data structure to 'flow' through this. *)
 (* Need errors and previous function type declarations *)
 
-(*fun typecheck {gdecls, fdecls, main} = 
+(*fun typecheck {gdecls, fdefns, main} = 
   foldl checkfn [] fdecls
         where checkfn fsym { fname, argdecls, rettype, body=(lsyms, stmts) } = []
 *)
