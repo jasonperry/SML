@@ -8,23 +8,23 @@ datatype checkResult = T of valtype (* Stitch 'em like a monad? *)
 
 (* should check decls and types in different fns? *)
 
-(** takes pair (vdecls, fdecls) *)
 (* TODO: replace with more efficient structure, using a memoizing 'maker' *)
-fun lookup ([], _) sym = NONE
-  | lookup ((e, vtype)::rest, _) sym =  
+fun vlookup [] sym = NONE
+  | vlookup ((e, vtype)::rest) sym = 
     if sym = e then SOME vtype
-    else lookup (rest, []) sym
+    else vlookup rest sym
 
-fun flookup (_, ([] : fdecl list)) name = NONE
-  | flookup (_, {fname, argdecls, rettype}::rest) name =
+fun flookup ([] : fdecl list) name = NONE
+  | flookup ({fname, argdecls, rettype}::rest) name =
     if name = fname then SOME (argdecls, rettype) 
-    else flookup ([], rest) name
+    else flookup rest name
 
-fun checkexpr decls (ConstExpr i) = T FmInt
-  | checkexpr decls (ConstBool b) = T FmBool
-  | checkexpr decls (VarExpr var) = (case (lookup decls var) 
-                                   of SOME t => T t
-                                   |  NONE => B ["Undefined variable: " ^ var])
+fun checkexpr (decls: symtable * fdecl list) (ConstExpr i) = T FmInt
+  | checkexpr _ (ConstBool b) = T FmBool
+  | checkexpr (vsyms, _) (VarExpr var) = 
+    (case (vlookup vsyms var) 
+      of SOME t => T t
+      |  NONE => B ["Undefined variable: " ^ var])
   | checkexpr decls (NotExpr expr) = (
       case (checkexpr decls expr)
        of B errs => B errs
@@ -78,8 +78,8 @@ fun checkexpr decls (ConstExpr i) = T FmInt
                         then B ["Non-matching types (" ^ (typestr thentype) ^
                                 ", " ^ (typestr elstype) ^ ") for then/else"]
                         else T thentype)))
-  | checkexpr decls (FunCallExpr (fname, fnargs)) = 
-    (case flookup decls fname 
+  | checkexpr (decls as (vsyms, fdecls)) (FunCallExpr (fname, fnargs)) = 
+    (case flookup fdecls fname 
       of NONE => B ["Unrecognized function name: " ^ fname]
       |  SOME (params, rettype) => 
          let fun matchargs [] [] = [] (* List of errors in matching, empty if OK *)
@@ -90,30 +90,64 @@ fun checkexpr decls (ConstExpr i) = T FmInt
                   of B errs => errs @ (matchargs ps args) (* Keep going *)
                   | T atype => if atype = ptype
                                then matchargs ps args
-                               else "Non-matching argument types: " ^ (typestr ptype) ^
-                                    ", " ^ (typestr atype) :: (matchargs ps args)
+                               else "Non-matching argument types: " ^ 
+                                    (typestr ptype) ^ ", " ^ 
+                                    (typestr atype) :: (matchargs ps args)
          in
              case matchargs params fnargs
               of [] => T rettype
                | errs => B errs
          end)
 
-(* Return list of errors *)
-(* Only take closest matching name. If type doesn't match, then error. *)
-(*fun checkblock gsyms fsyms args (lsyms, []) acc = acc
-  | checkblock gsym fsyms args (lsyms, stmt::stmts) =
-    let errs = case stmt
-                of AssignStmt (var, expr) => (
-                    case lookup (lsyms @ args @ gdecls) var 
-                     of SOME type => checkexpr (lsyms @ args @ gdecls) 
-                      | NONE => ["Assignment to undefined variable: " ^ var])
-                 | IfStmt (expr, sblock,  => 
-                           
-                                                   
+(** Type-check single statement, returning list of errors *)
+(* Only take most local matching name. If type doesn't match, then error. *)
+(* vsyms has both local and global symbols *)
+fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
+  case vlookup vsyms var 
+   of SOME vtype => ( 
+       case checkexpr (vsyms @ adecls, fdecls) expr of
+           B errs => errs
+         | T etype => if etype <> vtype 
+                      then ["Assignment type mismatch: " ^ (typestr vtype) ^ 
+                            ", " ^ (typestr etype)]
+                      else [])
+    | NONE => (case vlookup adecls var
+                of NONE => ["Assignment to undefined variable: " ^ var]
+                 | SOME atype => ["Assignment to argument " ^
+                                  var ^ " not allowed"]))
+  | checkstmt vsyms adecls fdecls (IfStmt (cond, thenblock, elsblock)) = (
+    case checkexpr (vsyms @ adecls, fdecls) cond of
+        B errs => errs
+        (* Inner block: outer variables become 'globals' *)
+      | T FmBool => (checkblock vsyms adecls fdecls thenblock) @
+                    (case elsblock of SOME sblock => 
+                                      checkblock vsyms adecls fdecls sblock
+                                      | NONE => []) 
+      | T _  => ["Non-Boolean condition in if statement"])
+  | checkstmt vsyms argsyms fdecls (WhileStmt (cond, thenblock)) = (
+        case checkexpr (vsyms @ argsyms, fdecls) cond of
+        B errs => errs
+        (* Inner block: outer variables become 'globals' *)
+      | T FmBool => (checkblock vsyms argsyms fdecls thenblock)
+      | T _  => ["Non-Boolean condition in while statement"])
+  | checkstmt vsyms argsyms fdecls (PrintStmt expr) = (
+      case checkexpr (vsyms @ argsyms, fdecls) expr of
+          B errs => errs
+        | T _ => []   (* TODO: printable types? *))
+  | checkstmt vsyms argsyms fdecls (CallStmt call) = (
+      case checkexpr (vsyms @ argsyms, fdecls) (FunCallExpr call) of
+          B errs => errs
+        | T FmUnit => []
+        | T rettype => ["Discarding return value of type " ^ (typestr rettype)])
+  | checkstmt vsyms argsyms fdecls (ReturnStmt expr) = (
+      case checkexpr (vsyms @ argsyms, fdecls) expr of
+          B errs => errs
+        | T _ => [] (* special entry to args table *))
 
-    in checkblock fsyms args (lsyms, stmts) (errs @ acc)
-    end 
-*)
+and checkblock (gsyms: symtable) args (fsyms: fdecl list) (lsyms, stmts) =
+  List.concat (map (checkstmt (gsyms @ lsyms) args fsyms) stmts)
+
+
 (* Type errors data structure to 'flow' through this. *)
 (* Need errors and previous function type declarations *)
 

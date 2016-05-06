@@ -47,7 +47,7 @@ rule Token = parse (* TODO: strings *)
   | `-`?[`0`-`9`]+      { case Int.fromString (getLexeme lexbuf) of
                                NONE   => lexerError lexbuf "internal error"
                              | SOME i => INT i
-                        }  
+                        }
   | [`a`-`z``A`-`Z`][`a`-`z``A`-`Z``0`-`9`]*
                         { keyword (getLexeme lexbuf) }
   | "(*"                { commentStart := getLexemeStart lexbuf;
@@ -69,6 +69,8 @@ rule Token = parse (* TODO: strings *)
   | `|`                 { BITOR }                     
   | `&`                 { BITAND }
   | `^`                 { XOR }
+  | "<<"                { LSHIFT }
+  | ">>"                { RSHIFT }
   | `(`                 { LPAR }
   | `)`                 { RPAR }
   | `[`                 { LSQUARE }

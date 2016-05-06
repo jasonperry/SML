@@ -15,7 +15,7 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 
 %token <int> INT
 %token <string> NAME
-%token PLUS MINUS TIMES DIV MOD BITAND BITOR XOR
+%token PLUS MINUS TIMES DIV MOD BITAND BITOR XOR LSHIFT RSHIFT
 %token EQ NE LT LE GE GT
 %token ASSIGN COLON COMMA DASHARROW SEMI 
 %token INTTYPE BOOLTYPE
@@ -32,6 +32,7 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %left BITOR	
 %left XOR		
 %left BITAND
+%left LSHIFT RSHIFT
 %left PLUS MINUS 
 %left TIMES DIV MOD        	/* highest precedence  */
 

@@ -47,5 +47,4 @@ Fmparse.uo: Fmparse.ui Fmabsyn.uo
 Fmlexer.uo: Fmparse.ui 
 Pmain.uo: Fmlexer.uo Fmparse.ui 
 Fminus.uo: Fmparse.ui 
-typetest.uo: Fmtypes.uo 
 Fmtypes.uo: Fmabsyn.uo 
