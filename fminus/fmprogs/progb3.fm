@@ -1,0 +1,15 @@
+var x: bool;
+
+proc foo (y: int) -> int {
+    if (y < 5) {
+       return y;
+    }
+    x := false;
+}
+
+main {
+    var i : int;
+    i := 3 * 5;
+    i := foo(7);
+    print i;
+}

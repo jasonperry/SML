@@ -1,7 +1,7 @@
 (* Fmabsyn.sml  -- the abstract syntax datatype *)
 
 (* Some subtyping? Eq, Ord, Num, *)
-datatype valtype = FmInt | FmBool | FmUnit
+datatype valtype = FmInt | FmBool | FmUnit (* | FmArray of valtype * int *)
 
 fun typestr FmInt = "int" 
   | typestr FmBool = "bool"

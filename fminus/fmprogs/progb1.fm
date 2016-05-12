@@ -1,0 +1,12 @@
+var x: bool;
+
+proc foo (y: int) -> int {
+    return y;
+}
+
+main {
+    var i : int;
+    i := 3 * 5;
+    x := foo(7);
+    print i;
+}

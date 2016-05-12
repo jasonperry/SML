@@ -133,7 +133,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
   | checkstmt vsyms argsyms fdecls (PrintStmt expr) = (
       case checkexpr (vsyms @ argsyms, fdecls) expr of
           B errs => errs
-        | T _ => []   (* TODO: printable types? *))
+        | T _ => [] )  (* TODO: printable types, from a tenv? *)
   | checkstmt vsyms argsyms fdecls (CallStmt call) = (
       case checkexpr (vsyms @ argsyms, fdecls) (FunCallExpr call) of
           B errs => errs
@@ -142,16 +142,40 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
   | checkstmt vsyms argsyms fdecls (ReturnStmt expr) = (
       case checkexpr (vsyms @ argsyms, fdecls) expr of
           B errs => errs
-        | T _ => [] (* special entry to args table *))
+        | T rettype => (case vlookup argsyms "*return*" of (* special entry to args table *)
+                            SOME t => if rettype <> t
+                                      then ["Return type doesn't match function type: " ^
+                                            (typestr rettype) ^ ", " ^ (typestr t)]
+                                      else []
+                          | NONE => raise Empty (* shouldn't happen *) ))
 
 and checkblock (gsyms: symtable) args (fsyms: fdecl list) (lsyms, stmts) =
   List.concat (map (checkstmt (gsyms @ lsyms) args fsyms) stmts)
 
+(** Check if a statement list always returns *)
+fun willreturn [] = false
+  | willreturn (stmt::stmts) = case stmt of
+                                  ReturnStmt _ => true
+                                | IfStmt (e, (_, thenblk), SOME (_, elseblk)) =>
+                                  willreturn thenblk andalso willreturn elseblk
+                                | _ => willreturn stmts
+              
+(** Function: Add return type to argument types and call checkblock on the body. *)
+fun checkproc gsyms prevfdecls ({fname, argdecls, rettype}, sblock) =
+  let val returnerr = if rettype = FmUnit orelse willreturn (#2 sblock) then []
+                      else ["Procedure " ^ fname ^ " may not return a value"]
+      val errs = checkblock gsyms (("*return*", rettype)::argdecls) prevfdecls sblock
+  in if errs @ returnerr = [] then []
+     else "*** Errors in procedure " ^ fname ^ ": " :: (errs @ returnerr)
+  end
 
-(* Type errors data structure to 'flow' through this. *)
-(* Need errors and previous function type declarations *)
-
-(*fun typecheck {gdecls, fdefns, main} = 
-  foldl checkfn [] fdecls
-        where checkfn fsym { fname, argdecls, rettype, body=(lsyms, stmts) } = []
-*)
+(** Progress thru function definitions, adding to fdecls table *)
+fun checkprogram {gdecls, fdefns, main} =
+  let fun checkacc [] accdecls =
+        (case main of
+             SOME mainblock => checkblock gdecls [] accdecls mainblock
+           | NONE => [])
+        | checkacc ((fdefn as (fdecl, fbody)) :: fdefns) accdecls =
+          (checkproc gdecls accdecls fdefn) @ (checkacc fdefns (fdecl::accdecls))
+  in checkacc fdefns []
+  end

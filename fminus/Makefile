@@ -41,10 +41,5 @@ clean:
 Fmparse.ui: Fmabsyn.uo 
 Fmparse.uo: Fmparse.ui Fmabsyn.uo 
 Fmlexer.uo: Fmparse.ui 
-Pmain.uo: Fmparse.ui Fmlexer.uo 
-Fmparse.ui: Fmabsyn.uo 
-Fmparse.uo: Fmparse.ui Fmabsyn.uo 
-Fmlexer.uo: Fmparse.ui 
-Pmain.uo: Fmlexer.uo Fmparse.ui 
-Fminus.uo: Fmparse.ui 
+Pmain.uo: Fmlexer.uo Fmtypes.uo Fmparse.ui 
 Fmtypes.uo: Fmabsyn.uo 

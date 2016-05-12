@@ -12,7 +12,7 @@ fun parseExprPlain file stream lexbuf =
 
 (* Parse; show offending program piece on error *)
 
-fun parseExprReport file stream lexbuf =
+fun parseReport file stream lexbuf =
     let val expr = 
 	    Fmparse.Main Fmlexer.Token lexbuf
 	    handle
@@ -48,9 +48,10 @@ fun createLexerStream (is : BasicIO.instream) =
 fun parse file =
     let val is     = Nonstdio.open_in_bin file
         val lexbuf = createLexerStream is
-	val expr   = parseExprReport file is lexbuf
+	val pgm    = parseReport file is lexbuf
 	             handle exn => (BasicIO.close_in is; raise exn)
+        val errs   = Fmtypes.checkprogram pgm
     in 
         BasicIO.close_in is;
-	expr
+	(pgm, errs)
     end
