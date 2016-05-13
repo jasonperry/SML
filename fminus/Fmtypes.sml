@@ -8,6 +8,8 @@ datatype checkResult = T of valtype (* Stitch 'em like a monad? *)
 
 (* should check decls and types in different fns? *)
 
+(*** SYMBOL TABLE FUNCTIONS ***)
+                                   
 (* TODO: replace with more efficient structure, using a memoizing 'maker' *)
 fun vlookup [] sym = NONE
   | vlookup ((e, vtype)::rest) sym = 
@@ -19,6 +21,16 @@ fun flookup ([] : fdecl list) name = NONE
     if name = fname then SOME (argdecls, rettype) 
     else flookup rest name
 
+fun intersect_syms l1 [] = []
+  | intersect_syms [] l2 = []
+  | intersect_syms ((k,v)::es) l2 =
+    if isSome (vlookup l2 k)
+    then (k,v)::(intersect_syms es l2)
+    else (intersect_syms es l2)
+
+
+(*** SEMANTIC CHECKING FUNCTIONS ***)
+             
 fun checkexpr (decls: symtable * fdecl list) (ConstExpr i) = T FmInt
   | checkexpr _ (ConstBool b) = T FmBool
   | checkexpr (vsyms, _) (VarExpr var) = 
@@ -148,7 +160,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                                             (typestr rettype) ^ ", " ^ (typestr t)]
                                       else []
                           | NONE => raise Empty (* shouldn't happen *) ))
-
+                                                           
 and checkblock (gsyms: symtable) args (fsyms: fdecl list) (lsyms, stmts) =
   List.concat (map (checkstmt (gsyms @ lsyms) args fsyms) stmts)
 
@@ -159,21 +171,81 @@ fun willreturn [] = false
                                 | IfStmt (e, (_, thenblk), SOME (_, elseblk)) =>
                                   willreturn thenblk andalso willreturn elseblk
                                 | _ => willreturn stmts
-              
+                                                  
+(** Check that all variables used in expressions in a statement list are initialized.
+  * Return errors plus variables initialized in this block (for if/else) *)
+fun checkinit (initedvars: symtable) [] = ([], initedvars)
+  | checkinit initedvars (stmt::stmts) =
+    let fun usedvars expr = ( (* This could go outside, doesn't close over anything. *)
+          case expr of
+              ConstExpr _ => []
+            | ConstBool _ => []
+            | VarExpr vname => [vname]
+            | NotExpr e => usedvars e
+            | BoolExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
+            | CompExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
+            | ArithExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
+            | IfExpr (e1, e2, e3) => (usedvars e1) @ (usedvars e2) @ (usedvars e3)
+            | FunCallExpr (_, elist) => List.concat (map usedvars elist) )
+        (* map lookup, filter nones, map to error messages *)
+        fun checkvars vlist = (* closes over initedvars *)
+          let val lookups = ListPair.zip (vlist, map (vlookup initedvars) vlist)
+              val nones = List.mapPartial (fn p => if isSome (#2 p) then NONE
+                                                   else SOME (#1 p)) lookups
+          in map (fn v => "Variable " ^ v ^ " may be used before initialization") nones
+          end
+        val (errs, newinits) = (
+            case stmt of
+                (* We could strip off the types and just use a list of vars. *)
+                AssignStmt (v, expr) => (checkvars (usedvars expr), [(v, FmUnit)])
+                (* Add variables that were initialized in both branches *)
+              | IfStmt (cond, thenblock, SOME elseblock) =>
+                let val (thenerrs, theninits) = checkinit initedvars (#2 thenblock)
+                    val (elseerrs, elseinits) = checkinit initedvars (#2 elseblock)
+                in (checkvars (usedvars cond) @ thenerrs @ elseerrs,
+                    intersect_syms theninits elseinits)
+                end
+              | IfStmt (cond, thenblock, NONE) =>
+                let val (thenerrs, _) = checkinit initedvars (#2 thenblock)
+                in (checkvars (usedvars cond) @ thenerrs, [])
+                end
+              | WhileStmt (cond, whileblock) =>
+                let val (whileerrs, _) = checkinit initedvars (#2 whileblock)
+                in (checkvars (usedvars cond) @ whileerrs, [])
+                end
+              | PrintStmt expr => (checkvars (usedvars expr), [])
+              | CallStmt (_, elist) => (List.concat (map (checkvars o usedvars) elist), [])
+              | ReturnStmt expr => (checkvars (usedvars expr), [])
+        )
+    in
+        (* initalized variables accumulate tail-style, errors direct-style *)
+        let val (nexterrs, allinits) = checkinit (newinits @ initedvars) stmts
+        in
+            (errs @ nexterrs, allinits)
+        end 
+    end
+
 (** Function: Add return type to argument types and call checkblock on the body. *)
 fun checkproc gsyms prevfdecls ({fname, argdecls, rettype}, sblock) =
   let val returnerr = if rettype = FmUnit orelse willreturn (#2 sblock) then []
                       else ["Procedure " ^ fname ^ " may not return a value"]
       val errs = checkblock gsyms (("*return*", rettype)::argdecls) prevfdecls sblock
-  in if errs @ returnerr = [] then []
-     else "*** Errors in procedure " ^ fname ^ ": " :: (errs @ returnerr)
+      val initerrs = #1 (checkinit (gsyms @ argdecls) (#2 sblock))
+  in if errs @ returnerr @ initerrs = [] then []
+     else "*** Errors in procedure " ^ fname ^ ": " :: (errs @ returnerr @ initerrs)
   end
 
 (** Progress thru function definitions, adding to fdecls table *)
 fun checkprogram {gdecls, fdefns, main} =
   let fun checkacc [] accdecls =
         (case main of
-             SOME mainblock => checkblock gdecls [] accdecls mainblock
+             SOME mainblock =>
+             let val (initerrs, _) = checkinit gdecls (#2 mainblock)
+                 val allerrs = (checkblock gdecls [] accdecls mainblock) @ initerrs
+             in 
+                 if allerrs = [] then []
+                 else "*** Errors in main: " :: allerrs
+             end 
            | NONE => [])
         | checkacc ((fdefn as (fdecl, fbody)) :: fdefns) accdecls =
           (checkproc gdecls accdecls fdefn) @ (checkacc fdefns (fdecl::accdecls))
