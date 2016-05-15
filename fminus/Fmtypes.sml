@@ -1,12 +1,13 @@
-(* Typechecking functions *)
+(* Semantic analysis functions, including typechecking *)
 
 open Fmabsyn;
 
-(** Typechecking function returns a type or a list of errors *)
+(** Type-checking functions return a type or a list of errors *)
 datatype checkResult = T of valtype (* Stitch 'em like a monad? *)
                      | B of string list (* errors *)
 
 (* should check decls and types in different fns? *)
+
 
 (*** SYMBOL TABLE FUNCTIONS ***)
                                    
@@ -117,9 +118,21 @@ fun checkreachable [] = []
   | checkreachable (stmt::[]) = [] 
   | checkreachable (stmt1::stmt2::stmts) =
     case stmt1 of
-        ReturnStmt _ => ["Unreachable code after return"] (* TODO: 'break' statement also. *)
+        ReturnStmt _ => ["Unreachable code after return"]
+      | BreakStmt => ["Unreachable code after break"] 
       | _ => checkreachable (stmt2::stmts)
-                                   
+
+(** Check that a break is inside a loop *)
+fun checkbreak [] = []
+  | checkbreak (stmt::stmts) =
+    case stmt of
+        BreakStmt => ["Break statement used outside of loop"]
+      | IfStmt (_, (_, thenstmts), SOME (_, elsestmts)) => (checkbreak thenstmts)
+                                                        @ (checkbreak elsestmts)
+                                                        @ (checkbreak stmts)
+      | IfStmt (_, (_, thenstmts), NONE) => (checkbreak thenstmts) @ (checkbreak stmts)
+      | _ => checkbreak stmts
+                  
         
 (** Type-check single statement, returning list of errors *)
 (* Only take most local matching name. If type doesn't match, then error. *)
@@ -147,20 +160,32 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                                       | NONE => []) 
       | T _  => ["Non-Boolean condition in if statement"])
   | checkstmt vsyms argsyms fdecls (WhileStmt (cond, thenblock)) = (
-        case checkexpr (vsyms @ argsyms, fdecls) cond of
-        B errs => errs
-        (* Inner block: outer variables become 'globals' *)
-      | T FmBool => (checkblock vsyms argsyms fdecls thenblock)
-      | T _  => ["Non-Boolean condition in while statement"])
+        (case checkexpr (vsyms @ argsyms, fdecls) cond of
+             B errs => errs
+           (* Inner block: outer variables become 'globals' *)
+           | T FmBool => []
+           | T _  => ["Non-Boolean condition in while statement"])
+        @ checkblock vsyms argsyms fdecls thenblock )
+
+  | checkstmt vsyms argsyms fdecls (ForStmt (initstmt, cond, updatestmt, sblock)) = (
+      checkstmt vsyms argsyms fdecls initstmt
+      @ (case checkexpr (vsyms @ argsyms, fdecls) cond of
+             B errs => errs
+           | T _ => []) 
+      @ checkstmt vsyms argsyms fdecls updatestmt
+      @ checkblock vsyms argsyms fdecls sblock )
+
   | checkstmt vsyms argsyms fdecls (PrintStmt expr) = (
       case checkexpr (vsyms @ argsyms, fdecls) expr of
           B errs => errs
         | T _ => [] )  (* TODO: printable types, from a tenv? *)
+
   | checkstmt vsyms argsyms fdecls (CallStmt call) = (
       case checkexpr (vsyms @ argsyms, fdecls) (FunCallExpr call) of
           B errs => errs
         | T FmUnit => []
         | T rettype => ["Discarding return value of type " ^ (typestr rettype)])
+
   | checkstmt vsyms argsyms fdecls (ReturnStmt (SOME expr)) = (
       case checkexpr (vsyms @ argsyms, fdecls) expr of
           B errs => errs
@@ -171,6 +196,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                                       else []
                           | NONE => raise Empty (* shouldn't happen *) ))
   | checkstmt _ _ _ (ReturnStmt NONE) = []
+  | checkstmt _ _ _ BreakStmt = []
     
 and checkblock (gsyms: symtable) args (fsyms: fdecl list) (lsyms, stmts) =
     List.concat (map (checkstmt (gsyms @ lsyms) args fsyms) stmts)
@@ -193,8 +219,8 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
             | IfExpr (e1, e2, e3) => (usedvars e1) @ (usedvars e2) @ (usedvars e3)
             | FunCallExpr (_, elist) => List.concat (map usedvars elist) )
         (* map lookup, filter nones, map to error messages *)
-        fun checkvars vlist = (* closes over initedvars *)
-          let val lookups = ListPair.zip (vlist, map (vlookup initedvars) vlist)
+        fun checkvars ivars vlist = (* closes over initedvars - no, for loop needs to add new. *)
+          let val lookups = ListPair.zip (vlist, map (vlookup ivars) vlist)
               val nones = List.mapPartial (fn p => if isSome (#2 p) then NONE
                                                    else SOME (#1 p)) lookups
           in map (fn v => "Variable " ^ v ^ " may be used before initialization") nones
@@ -202,26 +228,36 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
         val (errs, newinits) = (
             case stmt of
                 (* We could strip off the types and just use a list of vars. *)
-                AssignStmt (v, expr) => (checkvars (usedvars expr), [(v, FmUnit)])
+                AssignStmt (v, expr) => (checkvars initedvars (usedvars expr), [(v, FmUnit)])
                 (* Add variables that were initialized in both branches *)
               | IfStmt (cond, thenblock, SOME elseblock) =>
                 let val (thenerrs, theninits) = checkinit initedvars (#2 thenblock)
                     val (elseerrs, elseinits) = checkinit initedvars (#2 elseblock)
-                in (checkvars (usedvars cond) @ thenerrs @ elseerrs,
+                in (checkvars initedvars (usedvars cond) @ thenerrs @ elseerrs,
                     intersect_syms theninits elseinits)
                 end
-              | IfStmt (cond, thenblock, NONE) =>
+              | IfStmt (cond, thenblock, NONE) => (* vars inited in blocks are thrown away. *)
                 let val (thenerrs, _) = checkinit initedvars (#2 thenblock)
-                in (checkvars (usedvars cond) @ thenerrs, [])
+                in (checkvars initedvars (usedvars cond) @ thenerrs, [])
                 end
               | WhileStmt (cond, whileblock) =>
                 let val (whileerrs, _) = checkinit initedvars (#2 whileblock)
-                in (checkvars (usedvars cond) @ whileerrs, [])
+                in (checkvars initedvars (usedvars cond) @ whileerrs, [])
                 end
-              | PrintStmt expr => (checkvars (usedvars expr), [])
-              | CallStmt (_, elist) => (List.concat (map (checkvars o usedvars) elist), [])
-              | ReturnStmt (SOME expr) => (checkvars (usedvars expr), [])
+              | ForStmt (initstmt, cond, updatestmt, forblock) =>
+                let val (initerrs, newinit) = checkinit initedvars [initstmt]
+                    val conderrs = checkvars newinit (usedvars cond) (* have to use new var *)
+                    val (updateerrs, newinit2) = checkinit newinit [updatestmt]
+                    val (blockerrs, _) = checkinit newinit2 (#2 forblock)
+                (* vars init'ed in the for loop initializer and update are kept *)
+                in (initerrs @ conderrs @ updateerrs @ blockerrs, newinit2)
+                end
+              | PrintStmt expr => (checkvars initedvars (usedvars expr), [])
+              | CallStmt (_, elist) => (
+                  List.concat (map (checkvars initedvars o usedvars) elist), [] )
+              | ReturnStmt (SOME expr) => (checkvars initedvars (usedvars expr), [])
               | ReturnStmt NONE => ([], [])
+              | BreakStmt => ([], [])
         )
     in
         (* initalized variables accumulate tail-style, errors direct-style *)
@@ -241,12 +277,14 @@ fun willreturn [] = false
 
 (** Procedures: Add return type to argument types and call checkblock on the body. *)
 fun checkproc gsyms prevfdecls ({fname, argdecls, rettype}, sblock) =
-  let val returnerr = if rettype = FmUnit orelse willreturn (#2 sblock) then []
+  let val errs = checkblock gsyms (("*return*", rettype)::argdecls) prevfdecls sblock
+      val returnerr = if rettype = FmUnit orelse willreturn (#2 sblock) then []
                       else ["Procedure " ^ fname ^ " may not return a value"]
-      val errs = checkblock gsyms (("*return*", rettype)::argdecls) prevfdecls sblock
       val initerrs = #1 (checkinit (gsyms @ argdecls) (#2 sblock))
-  in if errs @ returnerr @ initerrs = [] then []
-     else "*** Errors in procedure " ^ fname ^ ": " :: (errs @ returnerr @ initerrs)
+      val breakerrs = checkbreak (#2 sblock)
+  in if errs @ returnerr @ initerrs @ breakerrs = [] then []
+     else "*** Errors in procedure " ^ fname ^ ": " :: (errs @ returnerr
+                                                        @ initerrs @ breakerrs)
   end
 
 (** Progress thru function definitions, adding to fdecls table *)

@@ -28,9 +28,11 @@ datatype expr = ConstExpr of int
 datatype stmt = AssignStmt of string * expr 
               | IfStmt of expr * sblock * sblock option
               | WhileStmt of expr * sblock
+              | ForStmt of stmt * expr * stmt * sblock 
               | PrintStmt of expr
               | CallStmt of string * expr list
               | ReturnStmt of expr option
+              | BreakStmt
 withtype sblock = symtable * stmt list
 
 type fdecl = { fname: string, 

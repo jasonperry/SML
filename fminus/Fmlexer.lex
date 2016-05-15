@@ -26,18 +26,20 @@
 (*       | "case"         => CASE
        | "of"           => OF *)
        | "if"           => IF
-       | "import"       => IMPORT
-       | "main"         => MAIN
        | "then"         => THEN
        | "else"         => ELSE
        | "while"        => WHILE
+       | "for"          => FOR
        | "and"          => AND
        | "or"           => OR
        | "not"          => NOT
        | "true"         => TRUE
        | "false"        => FALSE
-       | "return"       => RETURN 
+       | "return"       => RETURN
+       | "break"        => BREAK
        | "print"        => PRINT
+       | "import"       => IMPORT
+       | "main"         => MAIN
        | _              => NAME s;
 
  }
