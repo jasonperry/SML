@@ -145,7 +145,8 @@ CallStmt:
     NAME LPAR Args RPAR SEMI            { CallStmt ($1, $3) }
 ;
 ReturnStmt:
-    RETURN Expr SEMI                    { ReturnStmt $2 }
+    RETURN Expr SEMI                    { ReturnStmt (SOME $2) }
+  | RETURN SEMI                         { ReturnStmt NONE }   
 ;
 // Encode expression type at syntax level?
 Args: 

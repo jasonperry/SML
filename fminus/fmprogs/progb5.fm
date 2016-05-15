@@ -1,0 +1,21 @@
+var x: bool;
+var z: int;
+
+proc foo (y: int) -> int {
+    if (y < 5) {
+        return y;
+        z := y + 1; (* unreachable *)
+    }
+    else {
+        return y;
+    }
+    x := false;
+}
+
+main {
+    var i : int;
+    i := 3 * 5;
+    i := foo(7);
+    return;
+    print i; (* unreachable *)
+}

@@ -1,0 +1,22 @@
+var x: bool;
+
+proc foo (y: int) -> int {
+    var z: int;
+    if (y < 5) {
+        z := 44;
+        return y;
+    }
+    else {
+        (* z := 45; *)
+        return y;
+    }
+    x := false;
+    print z; (* uninitialized *)
+}
+
+main {
+    var i : int;
+    (* i := 3 * 5;
+    i := foo(7); *)
+    print i; (* uninitialized *)
+}

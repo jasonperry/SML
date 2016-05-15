@@ -30,7 +30,7 @@ datatype stmt = AssignStmt of string * expr
               | WhileStmt of expr * sblock
               | PrintStmt of expr
               | CallStmt of string * expr list
-              | ReturnStmt of expr
+              | ReturnStmt of expr option
 withtype sblock = symtable * stmt list
 
 type fdecl = { fname: string, 

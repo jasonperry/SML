@@ -111,6 +111,16 @@ fun checkexpr (decls: symtable * fdecl list) (ConstExpr i) = T FmInt
                | errs => B errs
          end)
 
+                                                          
+(** Check that all statements in a list are reachable. *) 
+fun checkreachable [] = []
+  | checkreachable (stmt::[]) = [] 
+  | checkreachable (stmt1::stmt2::stmts) =
+    case stmt1 of
+        ReturnStmt _ => ["Unreachable code after return"] (* TODO: 'break' statement also. *)
+      | _ => checkreachable (stmt2::stmts)
+                                   
+        
 (** Type-check single statement, returning list of errors *)
 (* Only take most local matching name. If type doesn't match, then error. *)
 (* vsyms has both local and global symbols *)
@@ -151,7 +161,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
           B errs => errs
         | T FmUnit => []
         | T rettype => ["Discarding return value of type " ^ (typestr rettype)])
-  | checkstmt vsyms argsyms fdecls (ReturnStmt expr) = (
+  | checkstmt vsyms argsyms fdecls (ReturnStmt (SOME expr)) = (
       case checkexpr (vsyms @ argsyms, fdecls) expr of
           B errs => errs
         | T rettype => (case vlookup argsyms "*return*" of (* special entry to args table *)
@@ -160,18 +170,13 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                                             (typestr rettype) ^ ", " ^ (typestr t)]
                                       else []
                           | NONE => raise Empty (* shouldn't happen *) ))
-                                                           
+  | checkstmt _ _ _ (ReturnStmt NONE) = []
+    
 and checkblock (gsyms: symtable) args (fsyms: fdecl list) (lsyms, stmts) =
-  List.concat (map (checkstmt (gsyms @ lsyms) args fsyms) stmts)
+    List.concat (map (checkstmt (gsyms @ lsyms) args fsyms) stmts)
+    @
+    checkreachable stmts
 
-(** Check if a statement list always returns *)
-fun willreturn [] = false
-  | willreturn (stmt::stmts) = case stmt of
-                                  ReturnStmt _ => true
-                                | IfStmt (e, (_, thenblk), SOME (_, elseblk)) =>
-                                  willreturn thenblk andalso willreturn elseblk
-                                | _ => willreturn stmts
-                                                  
 (** Check that all variables used in expressions in a statement list are initialized.
   * Return errors plus variables initialized in this block (for if/else) *)
 fun checkinit (initedvars: symtable) [] = ([], initedvars)
@@ -215,7 +220,8 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
                 end
               | PrintStmt expr => (checkvars (usedvars expr), [])
               | CallStmt (_, elist) => (List.concat (map (checkvars o usedvars) elist), [])
-              | ReturnStmt expr => (checkvars (usedvars expr), [])
+              | ReturnStmt (SOME expr) => (checkvars (usedvars expr), [])
+              | ReturnStmt NONE => ([], [])
         )
     in
         (* initalized variables accumulate tail-style, errors direct-style *)
@@ -225,7 +231,15 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
         end 
     end
 
-(** Function: Add return type to argument types and call checkblock on the body. *)
+(** Check if a statement list always returns *)
+fun willreturn [] = false
+  | willreturn (stmt::stmts) = case stmt of
+                                  ReturnStmt _ => true
+                                | IfStmt (e, (_, thenblk), SOME (_, elseblk)) =>
+                                  willreturn thenblk andalso willreturn elseblk
+                                | _ => willreturn stmts
+
+(** Procedures: Add return type to argument types and call checkblock on the body. *)
 fun checkproc gsyms prevfdecls ({fname, argdecls, rettype}, sblock) =
   let val returnerr = if rettype = FmUnit orelse willreturn (#2 sblock) then []
                       else ["Procedure " ^ fname ^ " may not return a value"]
