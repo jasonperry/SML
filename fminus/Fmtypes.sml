@@ -164,14 +164,15 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
              B errs => errs
            (* Inner block: outer variables become 'globals' *)
            | T FmBool => []
-           | T _  => ["Non-Boolean condition in while statement"])
+           | T t  => ["Non-Boolean condition in while statement" ^ (typestr t)])
         @ checkblock vsyms argsyms fdecls thenblock )
 
   | checkstmt vsyms argsyms fdecls (ForStmt (initstmt, cond, updatestmt, sblock)) = (
       checkstmt vsyms argsyms fdecls initstmt
       @ (case checkexpr (vsyms @ argsyms, fdecls) cond of
              B errs => errs
-           | T _ => []) 
+           | T FmBool => []
+           | T t => ["Non-Boolean condition in 'for' statement: " ^ (typestr t)]) 
       @ checkstmt vsyms argsyms fdecls updatestmt
       @ checkblock vsyms argsyms fdecls sblock )
 
@@ -247,10 +248,11 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
               | ForStmt (initstmt, cond, updatestmt, forblock) =>
                 let val (initerrs, newinit) = checkinit initedvars [initstmt]
                     val conderrs = checkvars newinit (usedvars cond) (* have to use new var *)
-                    val (updateerrs, newinit2) = checkinit newinit [updatestmt]
-                    val (blockerrs, _) = checkinit newinit2 (#2 forblock)
-                (* vars init'ed in the for loop initializer and update are kept *)
-                in (initerrs @ conderrs @ updateerrs @ blockerrs, newinit2)
+                    val (updateerrs, _) = checkinit newinit [updatestmt]
+                    val (blockerrs, _) = checkinit newinit (#2 forblock)
+                (* vars init'ed in the for loop initializer are kept
+                 * --but not the update, it might not happen *)
+                in (initerrs @ conderrs @ updateerrs @ blockerrs, newinit)
                 end
               | PrintStmt expr => (checkvars initedvars (usedvars expr), [])
               | CallStmt (_, elist) => (

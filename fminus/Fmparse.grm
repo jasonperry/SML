@@ -46,7 +46,8 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %type <Fmabsyn.expr list> Args
 %type <(string * Fmabsyn.valtype)> Vdecl Param
 %type <Fmabsyn.fdefn> Fdefn
-%type <Fmabsyn.stmt> Stmt AssnStmt IfStmt WhileStmt PrintStmt CallStmt ReturnStmt BreakStmt ForStmt
+%type <Fmabsyn.stmt> Stmt LineStmt BlockStmt
+%type <Fmabsyn.stmt> AssnStmt IfStmt WhileStmt PrintStmt CallStmt ReturnStmt BreakStmt ForStmt
 %type <Fmabsyn.valtype> Typeexp Ftype 
 %type <Fmabsyn.expr> Expr VarExpr RelExpr AssocExpr
 /*
@@ -117,21 +118,27 @@ Stmts:
     /* empty */                         { [] }
   | Stmt Stmts                     { $1 :: $2 }
 ;
-Stmt: 
+Stmt:
+    LineStmt SEMI                       { $1 }
+  | BlockStmt                           { $1 }
+;
+LineStmt:      
     AssnStmt                            { $1 }
-  | ForStmt                             { $1 }
-  | WhileStmt                           { $1 }
-  | IfStmt                              { $1 }
   | PrintStmt                           { $1 }
   | CallStmt                            { $1 }
   | ReturnStmt                          { $1 }
   | BreakStmt                           { $1 }
 ;
+BlockStmt:
+  | ForStmt                             { $1 }
+  | WhileStmt                           { $1 }
+  | IfStmt                              { $1 }
+;
 AssnStmt:
-    NAME ASSIGN Expr SEMI               { AssignStmt ($1, $3) }
+    NAME ASSIGN Expr                    { AssignStmt ($1, $3) }
 ;
 ForStmt: /* Should allow empty FOR statement? */
-    FOR LPAR AssnStmt SEMI RelExpr SEMI AssnStmt RPAR Sblock
+    FOR LPAR AssnStmt SEMI Expr SEMI AssnStmt RPAR Sblock
                                         { ForStmt ($3, $5, $7, $9) }
 ;
 WhileStmt:
@@ -142,17 +149,17 @@ IfStmt:
   | IF LPAR Expr RPAR Sblock ELSE Sblock       { IfStmt ($3, $5, SOME $7) }
 ;
 PrintStmt:
-    PRINT Expr SEMI                     { PrintStmt $2 }
+    PRINT Expr                          { PrintStmt $2 }
 ;
 CallStmt:
-    NAME LPAR Args RPAR SEMI            { CallStmt ($1, $3) }
+    NAME LPAR Args RPAR                 { CallStmt ($1, $3) }
 ;
 ReturnStmt:
-    RETURN Expr SEMI                    { ReturnStmt (SOME $2) }
-  | RETURN SEMI                         { ReturnStmt NONE }   
+    RETURN Expr                         { ReturnStmt (SOME $2) }
+  | RETURN                              { ReturnStmt NONE }   
 ;
 BreakStmt:
-    BREAK SEMI                          { BreakStmt }
+    BREAK                               { BreakStmt }
 ;
 // Encode expression type at syntax level?
 Args: 
