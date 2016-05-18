@@ -1,0 +1,16 @@
+proc sumTo(n: int) -> int {
+    var i: int;
+    var res: int;
+    res := 0;  (* comment out for fun *)
+    for (i := 1; i <= n; i := i + 1) {
+        res := res + i;
+        if (i > 200) {
+            break;
+        }
+    }
+    return res;
+}
+
+main {
+    print sumTo(10);
+}

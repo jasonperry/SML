@@ -53,5 +53,5 @@ fun parse file =
         val errs   = Fmtypes.checkprogram pgm
     in 
         BasicIO.close_in is;
-	(pgm, errs)
+	(pgm, errs, if errs = [] then FmtoC.printprog pgm else "")
     end

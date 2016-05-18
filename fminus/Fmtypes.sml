@@ -266,7 +266,7 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
         let val (nexterrs, allinits) = checkinit (newinits @ initedvars) stmts
         in
             (errs @ nexterrs, allinits)
-        end 
+        end
     end
 
 (** Check if a statement list always returns *)
