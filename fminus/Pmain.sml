@@ -55,3 +55,12 @@ fun parse file =
         BasicIO.close_in is;
 	(pgm, errs, if errs = [] then FmtoC.printprog pgm else "")
     end
+
+fun main () =
+  let val (pgm, errs, cstring) = parse (hd (CommandLine.arguments ()))
+  in
+      TextIO.output(TextIO.stdErr, FmtoC.termwith "\n" errs);
+      TextIO.output(TextIO.stdOut, cstring)
+  end
+
+val _ = main ()      

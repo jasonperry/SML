@@ -40,6 +40,8 @@
        | "print"        => PRINT
        | "import"       => IMPORT
        | "main"         => MAIN
+       | "indata"       => INDATA
+       | "outdata"      => OUTDATA
        | _              => NAME s;
 
  }

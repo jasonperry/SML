@@ -19,6 +19,7 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %token EQ NE LT LE GE GT
 %token ASSIGN COLON COMMA DASHARROW SEMI 
 %token INTTYPE BOOLTYPE
+%token INDATA OUTDATA
 %token AND OR NOT
 %token TRUE FALSE
 %token BREAK ELSE FOR IF IMPORT MAIN PROC PRINT RETURN THEN VAR WHILE
@@ -38,13 +39,13 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 
 %start Main
 %type <Fmabsyn.progtext> Main Ptext 
-%type <Fmabsyn.symtable> Vdecls 
+%type <Fmabsyn.symtable> Vdecls Ddecls
 %type <Fmabsyn.fdefn list> Fdefns 
 %type <(Fmabsyn.symtable * Fmabsyn.stmt list)> Sblock
 %type <Fmabsyn.stmt list> Stmts
 %type <Fmabsyn.symtable>  Params 
 %type <Fmabsyn.expr list> Args
-%type <(string * Fmabsyn.valtype)> Vdecl Param
+%type <(string * Fmabsyn.valtype)> Ddecl Vdecl Param
 %type <Fmabsyn.fdefn> Fdefn
 %type <Fmabsyn.stmt> Stmt LineStmt BlockStmt
 %type <Fmabsyn.stmt> AssnStmt IfStmt WhileStmt PrintStmt CallStmt ReturnStmt BreakStmt ForStmt
@@ -76,9 +77,16 @@ Main:
 */
 
 Ptext:
-    Vdecls Fdefns                       { {gdecls=$1, fdefns=$2, main=NONE} }
-  | Vdecls Fdefns MAIN Sblock           { {gdecls=$1, fdefns=$2, 
-                                           main=(SOME $4)} }
+    Ddecls Vdecls Fdefns                { {gdecls=$2, fdefns=$3, main=NONE} }
+  | Ddecls Vdecls Fdefns MAIN Sblock    { {gdecls=$2, fdefns=$3, main=(SOME $5)} }
+;
+Ddecls:
+    /* empty */                         { [] }
+  | Ddecl SEMI Ddecls                   { $1 :: $3 }
+;
+Ddecl:
+    INDATA NAME COLON Typeexp             { ($2, $4) }
+  | OUTDATA NAME COLON Typeexp            { ($2, $4) }       
 ;
 Vdecls:
     /* empty */                         { [] }

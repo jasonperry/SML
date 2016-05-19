@@ -7,11 +7,15 @@ fun typestr FmInt = "int"
   | typestr FmBool = "bool"
   | typestr FmUnit = "unit"  
 
+datatype scope = Indata | Outdata | Global | Local | Arg
+
 (* If I don't keep source locations here, how can I typecheck 'later'? *)
 
 datatype relop = Eq | Ne | Gt | Ge | Lt | Le
 datatype arithop = Plus | Minus | Times | Div | Mod | Xor | Bitor | Bitand
 datatype boolop = And | Or
+
+type symentry = string * valtype * scope
 
 type symtable = (string * valtype) list
 
@@ -24,6 +28,8 @@ datatype expr = ConstExpr of int
               | ArithExpr of arithop * expr * expr
               | IfExpr of expr * expr * expr
               | FunCallExpr of string * (expr list)
+
+type texpr = expr * valtype
 
 datatype stmt = AssignStmt of string * expr 
               | IfStmt of expr * sblock * sblock option
