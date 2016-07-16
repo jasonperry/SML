@@ -28,7 +28,7 @@ fun termwith inter [] = ""
 (*  | termwith inter [s] = s ^ inter *)
   | termwith inter (s::strs) = s ^ inter ^ (termwith inter strs)
 
-fun printdecl (varname, t) =
+fun printdecl (varname, (t, _)) =  (* Storage type not used? If const, will change *)
   case t of
       FmInt => "int " ^ varname
     | FmBool => "bool " ^ varname
@@ -90,7 +90,7 @@ fun printproc ({fname, argdecls, rettype}, body) =
   ^ fname ^ "(" ^ joinwith ", " (map printdecl argdecls) ^ ")"
   ^ printsblock body
 
-fun printprog {gdecls, fdefns, main} =
+fun printprog {ddecls, gdecls, fdefns, main} = (* TODO: turn ddecls into command-line args *)
   "#include <stdbool.h>\n#include <stdio.h>\n\n" ^
   termwith ";\n" (map printdecl gdecls) ^ "\n" ^
   joinwith "\n" (map printproc fdefns) ^ "\n" ^

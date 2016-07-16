@@ -13,8 +13,8 @@ datatype checkResult = T of valtype (* Stitch 'em like a monad? *)
                                    
 (* TODO: replace with more efficient structure, using a memoizing 'maker' *)
 fun vlookup [] sym = NONE
-  | vlookup ((e, vtype)::rest) sym = 
-    if sym = e then SOME vtype
+  | vlookup ((name, entry)::rest) sym = 
+    if sym = name then SOME entry
     else vlookup rest sym
 
 fun flookup ([] : fdecl list) name = NONE
@@ -36,7 +36,7 @@ fun checkexpr (decls: symtable * fdecl list) (ConstExpr i) = T FmInt
   | checkexpr _ (ConstBool b) = T FmBool
   | checkexpr (vsyms, _) (VarExpr var) = 
     (case (vlookup vsyms var) 
-      of SOME t => T t
+      of SOME (t, _) => T t
       |  NONE => B ["Undefined variable: " ^ var])
   | checkexpr decls (NotExpr expr) = (
       case (checkexpr decls expr)
@@ -98,7 +98,7 @@ fun checkexpr (decls: symtable * fdecl list) (ConstExpr i) = T FmInt
          let fun matchargs [] [] = [] (* List of errors in matching, empty if OK *)
                | matchargs (p::ps) [] = ["Not enough arguments to " ^ fname]
                | matchargs [] (p::ps) = ["Too many arguments to " ^ fname]
-               | matchargs ((pname, ptype)::ps) (arg::args) = 
+               | matchargs ((pname, (ptype, _))::ps) (arg::args) = 
                  case checkexpr decls arg
                   of B errs => errs @ (matchargs ps args) (* Keep going *)
                   | T atype => if atype = ptype
@@ -139,7 +139,7 @@ fun checkbreak [] = []
 (* vsyms has both local and global symbols *)
 fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
   case vlookup vsyms var 
-   of SOME vtype => ( 
+   of SOME (vtype, _) => ( 
        case checkexpr (vsyms @ adecls, fdecls) expr of
            B errs => errs
          | T etype => if etype <> vtype 
@@ -148,7 +148,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                       else [])
     | NONE => (case vlookup adecls var
                 of NONE => ["Assignment to undefined variable: " ^ var]
-                 | SOME atype => ["Assignment to argument " ^
+                 | SOME (atype, _) => ["Assignment to argument " ^
                                   var ^ " not allowed"]))
   | checkstmt vsyms adecls fdecls (IfStmt (cond, thenblock, elsblock)) = (
     case checkexpr (vsyms @ adecls, fdecls) cond of
@@ -191,10 +191,10 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
       case checkexpr (vsyms @ argsyms, fdecls) expr of
           B errs => errs
         | T rettype => (case vlookup argsyms "*return*" of (* special entry to args table *)
-                            SOME t => if rettype <> t
-                                      then ["Return type doesn't match function type: " ^
-                                            (typestr rettype) ^ ", " ^ (typestr t)]
-                                      else []
+                            SOME (t, _) => if rettype <> t
+                                           then ["Return type doesn't match function type: " ^
+                                                 (typestr rettype) ^ ", " ^ (typestr t)]
+                                           else []
                           | NONE => raise Empty (* shouldn't happen *) ))
   | checkstmt _ _ _ (ReturnStmt NONE) = []
   | checkstmt _ _ _ BreakStmt = []
@@ -229,7 +229,8 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
         val (errs, newinits) = (
             case stmt of
                 (* We could strip off the types and just use a list of vars. *)
-                AssignStmt (v, expr) => (checkvars initedvars (usedvars expr), [(v, FmUnit)])
+                AssignStmt (v, expr) => (  (* storage type doesn't matter. *)
+                 checkvars initedvars (usedvars expr), [(v, (FmUnit, Local))] )
                 (* Add variables that were initialized in both branches *)
               | IfStmt (cond, thenblock, SOME elseblock) =>
                 let val (thenerrs, theninits) = checkinit initedvars (#2 thenblock)
@@ -279,7 +280,7 @@ fun willreturn [] = false
 
 (** Procedures: Add return type to argument types and call checkblock on the body. *)
 fun checkproc gsyms prevfdecls ({fname, argdecls, rettype}, sblock) =
-  let val errs = checkblock gsyms (("*return*", rettype)::argdecls) prevfdecls sblock
+  let val errs = checkblock gsyms (("*return*", (rettype, Local))::argdecls) prevfdecls sblock
       val returnerr = if rettype = FmUnit orelse willreturn (#2 sblock) then []
                       else ["Procedure " ^ fname ^ " may not return a value"]
       val initerrs = #1 (checkinit (gsyms @ argdecls) (#2 sblock))
@@ -290,10 +291,10 @@ fun checkproc gsyms prevfdecls ({fname, argdecls, rettype}, sblock) =
   end
 
 (** Progress thru function definitions, adding to fdecls table *)
-fun checkprogram {gdecls, fdefns, main} =
+fun checkprogram {ddecls, gdecls, fdefns, main} =
   let fun checkacc [] accdecls =
         (case main of
-             SOME mainblock =>
+             SOME mainblock => 
              let val (initerrs, _) = checkinit gdecls (#2 mainblock)
                  val allerrs = (checkblock gdecls [] accdecls mainblock) @ initerrs
              in 

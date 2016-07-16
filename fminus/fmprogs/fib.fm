@@ -1,12 +1,13 @@
 
+(* indata n: int; *)
+
 proc fib(n: int) -> int {
     
     if (n = 0) { return 0; }
     else {
         if (n = 1) { return 1; }
         else {
-            var n2: int;
-            var n1: int;
+            var n2, n1: int;
             var i: int;
             n2 := 0;
             n1 := 1;
@@ -22,5 +23,5 @@ proc fib(n: int) -> int {
 }
 
 main {
-    print fib(13);
+    print fib(10); (* (n); *)
 }

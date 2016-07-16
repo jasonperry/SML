@@ -7,7 +7,7 @@ fun typestr FmInt = "int"
   | typestr FmBool = "bool"
   | typestr FmUnit = "unit"  
 
-datatype scope = Indata | Outdata | Global | Local | Arg
+datatype storetype = Indata | Outdata | Global | Local | Arg
 
 (* If I don't keep source locations here, how can I typecheck 'later'? *)
 
@@ -15,9 +15,9 @@ datatype relop = Eq | Ne | Gt | Ge | Lt | Le
 datatype arithop = Plus | Minus | Times | Div | Mod | Xor | Bitor | Bitand
 datatype boolop = And | Or
 
-type symentry = string * valtype * scope
+type symentry = string * (valtype * storetype)
 
-type symtable = (string * valtype) list
+type symtable = symentry list (* (string * valtype) list *)
 
 datatype expr = ConstExpr of int
               | ConstBool of bool
@@ -42,12 +42,13 @@ datatype stmt = AssignStmt of string * expr
 withtype sblock = symtable * stmt list
 
 type fdecl = { fname: string, 
-               argdecls: symtable,
+               argdecls: symentry list, (* (string * valtype) list, *)
                rettype: valtype }
 
 type fdefn = fdecl * sblock
 
-type progtext = { gdecls: symtable, 
+type progtext = { ddecls: symtable,
+                  gdecls: symtable, 
                   fdefns: fdefn list, 
                   main: sblock option }
 

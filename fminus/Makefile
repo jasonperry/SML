@@ -16,7 +16,7 @@ Fmparse.sml Fmparse.sig: Fmparse.grm
 .SUFFIXES :
 .SUFFIXES : .sml .sig .ui .uo .mlp .lex .c .o
 
-# gives how to change the extension. cool!
+# general rules for converting files with one extension to another. 
 .sig.ui:
 	$(MOSMLC) $<
 
