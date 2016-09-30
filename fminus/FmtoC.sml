@@ -90,7 +90,8 @@ fun printproc ({fname, argdecls, rettype}, body) =
   ^ fname ^ "(" ^ joinwith ", " (map printdecl argdecls) ^ ")"
   ^ printsblock body
 
-fun printprog {ddecls, gdecls, fdefns, main} = (* TODO: turn ddecls into command-line args *)
+fun printprog {ddecls, gdecls, fdefns, main} =
+  (* TODO: turn ddecls into command-line args *)
   "#include <stdbool.h>\n#include <stdio.h>\n\n" ^
   termwith ";\n" (map printdecl gdecls) ^ "\n" ^
   joinwith "\n" (map printproc fdefns) ^ "\n" ^

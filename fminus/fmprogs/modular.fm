@@ -1,5 +1,13 @@
 
-indata n: int;
+(* indata n: int; *)
+
+(* what if the input is a symbolic formula? *)
+
+int MOD := 65521;
+
+proc mod_add (x: int, y: int) -> int {
+    return (x+y) % MOD;
+}
 
 proc fib(n: int) -> int {
     
@@ -7,7 +15,8 @@ proc fib(n: int) -> int {
     else {
         if (n = 1) { return 1; }
         else {
-            var n2, n1: int;
+            var n2: int;
+            var n1: int;
             var i: int;
             n2 := 0;
             n1 := 1;
@@ -23,6 +32,5 @@ proc fib(n: int) -> int {
 }
 
 main {
-    (* print fib(10); *)
-    print fib(n);
+    print fib(10); (* (n); *)
 }

@@ -63,4 +63,4 @@ fun main () =
       TextIO.output(TextIO.stdOut, cstring)
   end
 
-val _ = main ()      
+val _ = main ()

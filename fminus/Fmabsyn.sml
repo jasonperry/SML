@@ -15,7 +15,7 @@ datatype relop = Eq | Ne | Gt | Ge | Lt | Le
 datatype arithop = Plus | Minus | Times | Div | Mod | Xor | Bitor | Bitand
 datatype boolop = And | Or
 
-type symentry = string * (valtype * storetype)
+type symentry = string * (valtype * storetype) (* TODO: Record type *)
 
 type symtable = symentry list (* (string * valtype) list *)
 
