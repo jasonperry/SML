@@ -7,7 +7,9 @@ fun typestr FmInt = "int"
   | typestr FmBool = "bool"
   | typestr FmUnit = "unit"  
 
-datatype storetype = Indata | Outdata | Global | Local | Arg
+datatype storeclass = Indata | Outdata | Global | Local | Arg
+
+type srcpos = int
 
 (* If I don't keep source locations here, how can I typecheck 'later'? *)
 
@@ -15,7 +17,8 @@ datatype relop = Eq | Ne | Gt | Ge | Lt | Le
 datatype arithop = Plus | Minus | Times | Div | Mod | Xor | Bitor | Bitand
 datatype boolop = And | Or
 
-type symentry = string * (valtype * storetype) (* TODO: Record type *)
+(* TODO: hashtable indexed by name *)
+type symentry = { name: string, vtype: valtype, sclass: storeclass }
 
 type symtable = symentry list (* (string * valtype) list *)
 
@@ -34,21 +37,23 @@ type texpr = expr * valtype
 datatype stmt = AssignStmt of string * expr 
               | IfStmt of expr * sblock * sblock option
               | WhileStmt of expr * sblock
-              | ForStmt of stmt * expr * stmt * sblock 
+              | ForStmt of stmt * expr * stmt * sblock
               | PrintStmt of expr
               | CallStmt of string * expr list
               | ReturnStmt of expr option
-              | BreakStmt
+              | BreakStmt of {pos: srcpos}
 withtype sblock = symtable * stmt list
 
 type fdecl = { fname: string, 
                argdecls: symentry list, (* (string * valtype) list, *)
                rettype: valtype }
 
+type ftable = fdecl list
+
 type fdefn = fdecl * sblock
 
+(* Input/output data declarations, then globals *)
 type progtext = { ddecls: symtable,
                   gdecls: symtable, 
                   fdefns: fdefn list, 
                   main: sblock option }
-

@@ -14,17 +14,19 @@
      
  val commentDepth = ref 0;  (* Current comment nesting *)
 
+ val lineno = ref 0; 
+                                
  (* Scan keywords as identifiers and use this function to distinguish them. *)
  (* If the set of keywords is large, use an auxiliary hashtable.            *)
 
- fun keyword s =
+ fun keyword s pos =
      case s of
          "var"          => VAR
        | "proc"         => PROC
        | "int"          => INTTYPE
        | "bool"         => BOOLTYPE
 (*       | "case"         => CASE
-       | "of"           => OF *)
+         | "of"           => OF *)
        | "if"           => IF
        | "then"         => THEN
        | "else"         => ELSE
@@ -36,7 +38,7 @@
        | "true"         => TRUE
        | "false"        => FALSE
        | "return"       => RETURN
-       | "break"        => BREAK
+       | "break"        => BREAK pos
        | "print"        => PRINT
        | "import"       => IMPORT
        | "main"         => MAIN
@@ -47,13 +49,14 @@
  }
 
 rule Token = parse (* TODO: strings *)
-    [` ` `\t` `\n` `\r`]     { Token lexbuf }
+    [` ` `\t` `\r`]     { Token lexbuf }
+  | [`\n`]              { lineno := !lineno + 1; Token lexbuf }
   | `-`?[`0`-`9`]+      { case Int.fromString (getLexeme lexbuf) of
                                NONE   => lexerError lexbuf "internal error"
                              | SOME i => INT i
                         }
   | [`a`-`z``A`-`Z`][`a`-`z``A`-`Z``0`-`9`]*
-                        { keyword (getLexeme lexbuf) }
+                        { keyword (getLexeme lexbuf) (!lineno) }
   | "(*"                { commentStart := getLexemeStart lexbuf;
                           commentDepth := 1; 
                           SkipComment lexbuf; Token lexbuf }

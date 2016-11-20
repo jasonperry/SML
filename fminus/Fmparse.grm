@@ -2,10 +2,11 @@
 (* Put util functions here. *)
 open Fmabsyn;
 
-(** Add a single storage type to every entry of a symbol table *)
+(** Add a single storage type to every entry of a var list,
+  * making it a symbol table *)
 fun addstoretype _ [] = []
-  | addstoretype stype ((name, vtype)::ents) = 
-    (name, (vtype, stype))::(addstoretype stype ents)
+  | addstoretype sclass ((name, vtype)::ents) = 
+    {name=name, vtype=vtype, sclass=sclass}::(addstoretype sclass ents)
 ;
 (*
 fun mkintop2 opr (Int n1, Int n2)  = Int (opr (n1, n2))
@@ -16,7 +17,7 @@ val lor  : int * int -> int = op *
 val land : int * int -> int = op +
 val lneg = fn b => if b = 0 then 1 else 0 *)
 %}
-
+/* Should have location (line, offset) pairs for everything? */
 %token <int> INT
 %token <string> NAME
 %token PLUS MINUS TIMES DIV MOD BITAND BITOR XOR LSHIFT RSHIFT
@@ -26,7 +27,8 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %token INDATA OUTDATA
 %token AND OR NOT
 %token TRUE FALSE
-%token BREAK ELSE FOR IF IMPORT MAIN PROC PRINT RETURN THEN VAR WHILE
+%token <Fmabsyn.srcpos> BREAK
+%token ELSE FOR IF IMPORT MAIN PROC PRINT RETURN THEN VAR WHILE
 %token LBRACE RBRACE LPAR RPAR LSQUARE RSQUARE
 %token EOF
 %token JUNK
@@ -44,7 +46,8 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %start Main
 %type <Fmabsyn.progtext> Main Ptext
 %type <Fmabsyn.symtable> Ddecls
-%type <(string * Fmabsyn.valtype) list> Vdecls Vdecl /* vdecl now a list too */
+/* Vdecls isn't symtable because store class added at higher level */
+%type <(string * Fmabsyn.valtype) list> Vdecls Vdecl 
 %type <string list> Varlist
 %type <Fmabsyn.fdefn list> Fdefns 
 %type <(Fmabsyn.symtable * Fmabsyn.stmt list)> Sblock
@@ -55,7 +58,8 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %type <Fmabsyn.fdefn> Fdefn
 %type <Fmabsyn.stmt list> Stmts
 %type <Fmabsyn.stmt> Stmt LineStmt BlockStmt
-%type <Fmabsyn.stmt> AssnStmt IfStmt WhileStmt PrintStmt CallStmt ReturnStmt BreakStmt ForStmt
+%type <Fmabsyn.stmt> AssnStmt IfStmt WhileStmt PrintStmt CallStmt
+%type <Fmabsyn.stmt> ReturnStmt BreakStmt ForStmt
 %type <Fmabsyn.valtype> Typeexp Ftype 
 %type <Fmabsyn.expr> Expr VarExpr RelExpr AssocExpr
 %%
@@ -75,9 +79,11 @@ Main:
 */
 
 Ptext:
-    Ddecls Vdecls Fdefns                { {ddecls=$1, gdecls=(addstoretype Global $2), 
+    Ddecls Vdecls Fdefns                { {ddecls=$1,
+                                           gdecls=(addstoretype Global $2), 
                                            fdefns=$3, main=NONE} }
-  | Ddecls Vdecls Fdefns MAIN Sblock    { {ddecls=$1, gdecls=(addstoretype Global $2), 
+  | Ddecls Vdecls Fdefns MAIN Sblock    { {ddecls=$1,
+                                           gdecls=(addstoretype Global $2), 
                                            fdefns=$3, main=(SOME $5)} }
 ;
 Ddecls:
@@ -85,8 +91,8 @@ Ddecls:
   | Ddecl SEMI Ddecls                   { $1 :: $3 }
 ;
 Ddecl:
-    INDATA NAME COLON Typeexp             { ($2, ($4, Indata)) }
-  | OUTDATA NAME COLON Typeexp            { ($2, ($4, Outdata)) }
+    INDATA NAME COLON Typeexp             { {name=$2, vtype=$4, sclass=Indata} }
+  | OUTDATA NAME COLON Typeexp            { {name=$2, vtype=$4, sclass=Outdata} }
 ;
 Vdecls:
     /* empty */                         { [] }
@@ -170,13 +176,13 @@ ReturnStmt:
   | RETURN                              { ReturnStmt NONE }   
 ;
 BreakStmt:
-    BREAK                               { BreakStmt }
+    BREAK                               { BreakStmt {pos=$1} }
 ;
 // Encode expression type at syntax level?
 Args: 
     /* empty */                         { [] }
-  | Expr                                { [$1] }     // Allows the dangling comma
-  | Expr COMMA Args                     { $1 :: $3 } // what if a non-var used to call a fun?
+  | Expr                                { [$1] }     // Allows dangling comma
+  | Expr COMMA Args                     { $1 :: $3 } // OK if a non-var used to call a fun?
 ;
 
 Expr:
@@ -217,4 +223,4 @@ AssocExpr:
   | AssocExpr BITAND AssocExpr                  { ArithExpr (Bitand, $1, $3) }
   | NAME LPAR Args RPAR                         { FunCallExpr ($1, $3) }
 ;
-// StringExpr
+// StringExpr // for concatenation and such. 
