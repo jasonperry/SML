@@ -3,8 +3,8 @@
 open Fmabsyn;
 
 (** Type-checking functions return a type or a list of errors *)
-datatype checkResult = T of valtype (* Stitch 'em like a monad? *)
-                     | B of string list (* errors *)
+datatype checkResult = T of expr (* Stitch 'em like a monad? *)
+                     | B of string list * expr (* errors *)
 
 (* should check decls and types in different fns? *)
 
@@ -33,10 +33,11 @@ fun intersect_syms l1 [] = []
     else (intersect_syms es l2)
 
 
-(*** SEMANTIC CHECKING FUNCTIONS ***)
-
-fun checkexpr (decls: symtable * ftable) (ConstExpr i) = T FmInt
-  | checkexpr _ (ConstBool b) = T FmBool
+(** typecheck an expression - should take uexpr now? *)
+fun checkexpr (decls: symtable * ftable) (e as (ConstExpr _)) =
+  T (TE (e, FmInt)) (* could just always return pair, and if UE it's errors *)
+  | checkexpr _ (ConstDouble _) = T FmDouble
+  | checkexpr _ (ConstBool _) = T FmBool
   | checkexpr (vsyms, _) (VarExpr var) = 
     (case (vlookup vsyms var)
       of SOME entry => T (#vtype entry)
@@ -65,7 +66,9 @@ fun checkexpr (decls: symtable * ftable) (ConstExpr i) = T FmInt
          if t1 <> t2 
          then B ["Different types in comparison: (" ^
                  (typestr t1) ^ ", " ^ (typestr t2) ^ ")"]
-         else (if (oper <> Eq andalso oper <> Ne) andalso t1 <> FmInt
+         else (if (oper = gt orelse oper = ge orelse oper = lt
+                   orelse oper = le) andalso
+                  (t1 <> FmInt andalso t1 <> FmDouble)
                then B ["Ordered comparison of non-ordered type: " ^ typestr t1]
                else T FmBool) )
   | checkexpr decls (ArithExpr (oper, e1, e2)) = 
@@ -74,6 +77,7 @@ fun checkexpr (decls: symtable * ftable) (ConstExpr i) = T FmInt
        | (B err1, T _) => B err1
        | (T _, B err2) => B err2
        | (T FmInt, T FmInt) => T FmInt
+       | (T FmDouble, T FmDouble) => T FmDouble
        | (T t1, T t2) =>
          if t1 <> t2
          then B ["Incompatible types in arithmetic expr: (" ^ 
@@ -144,8 +148,8 @@ fun checkbreak [] = []
         (checkbreak thenstmts) @ (checkbreak stmts)
       | _ => checkbreak stmts
                   
-        
-(** Type-check single statement, returning list of errors *)
+
+(** Typecheck single statement, returning list of errors *)
 (* Only take most local matching name. If type doesn't match, then error. *)
 (* vsyms has both local and global symbols *)
 fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
@@ -219,7 +223,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
              | NONE => raise Empty (* shouldn't happen *) ))
   | checkstmt _ _ _ (ReturnStmt NONE) = []
   | checkstmt _ _ _ (BreakStmt {pos}) = []
-    
+
 and checkblock (gsyms: symtable) args (fsyms: ftable) (lsyms, stmts) =
     List.concat (map (checkstmt (gsyms @ lsyms) args fsyms) stmts)
     @
@@ -231,9 +235,10 @@ and checkblock (gsyms: symtable) args (fsyms: ftable) (lsyms, stmts) =
 fun checkinit (initedvars: symtable) [] = ([], initedvars)
   | checkinit initedvars (stmt::stmts) =
     (* This could go outside, doesn't close over anything. *)
-    let fun usedvars expr = ( 
+    let fun usedvars expr = (
           case expr of
               ConstExpr _ => []
+            | ConstDouble _ => []
             | ConstBool _ => []
             | VarExpr vname => [vname]
             | NotExpr e => usedvars e
@@ -271,7 +276,8 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
                     @ elseerrs,
                     intersect_syms theninits elseinits)
                 end
-              | IfStmt (cond, thenblock, NONE) => (* vars inited in blocks are thrown away. *)
+              | IfStmt (cond, thenblock, NONE) =>
+                (* vars inited in blocks are thrown away. *)
                 let val (thenerrs, _) = checkinit initedvars (#2 thenblock)
                 in (checkvars initedvars (usedvars cond) @ thenerrs, [])
                 end
@@ -281,7 +287,8 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
                 end
               | ForStmt (initstmt, cond, updatestmt, forblock) =>
                 let val (initerrs, newinit) = checkinit initedvars [initstmt]
-                    val conderrs = checkvars newinit (usedvars cond) (* have to use new var *)
+                    val conderrs = checkvars newinit (usedvars cond)
+                    (* have to use new var *)
                     val (updateerrs, _) = checkinit newinit [updatestmt]
                     val (blockerrs, _) = checkinit newinit (#2 forblock)
                 (* vars init'ed in the for loop initializer are kept
@@ -290,8 +297,10 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
                 end
               | PrintStmt expr => (checkvars initedvars (usedvars expr), [])
               | CallStmt (_, elist) => (
-                  List.concat (map (checkvars initedvars o usedvars) elist), [] )
-              | ReturnStmt (SOME expr) => (checkvars initedvars (usedvars expr), [])
+                  List.concat (map (checkvars initedvars o usedvars) elist),
+                  [] )
+              | ReturnStmt (SOME expr) =>
+                (checkvars initedvars (usedvars expr), [])
               | ReturnStmt NONE => ([], [])
               | BreakStmt {pos} => ([], [])
         )
@@ -313,19 +322,21 @@ fun willreturn [] = false
       | _ => willreturn stmts
 
 (** Procs: Add return type to argument types and call checkblock on the 
-  * body. *)
+  * body. TODO: return decorated fdecl. *)
 fun checkproc gsyms prevfdecls ({fname, argdecls, rettype}, sblock) =
-  let val errs = checkblock
-                     gsyms
-                     ({name="*return*", vtype=rettype, sclass=Local}::argdecls)
-                     prevfdecls sblock
+  let val errs (*, newblock *) =
+          checkblock
+              gsyms
+              ({name="*return*", vtype=rettype, sclass=Local}::argdecls)
+              prevfdecls sblock
       val returnerr =
           if rettype = FmUnit orelse willreturn (#2 sblock)
           then []
           else ["Procedure " ^ fname ^ " may not return a value"]
       val initerrs = #1 (checkinit (gsyms @ argdecls) (#2 sblock))
       val breakerrs = checkbreak (#2 sblock)
-  in if errs @ returnerr @ initerrs @ breakerrs = [] then []
+      (* val newproc = ({fname, argdecls, rettype}, newblock *)
+  in (* (newproc, *) if errs @ returnerr @ initerrs @ breakerrs = [] then []
      else "*** Errors in procedure " ^ fname
           ^ ": " :: (errs @ returnerr @ initerrs @ breakerrs)
   end
@@ -333,8 +344,9 @@ fun checkproc gsyms prevfdecls ({fname, argdecls, rettype}, sblock) =
 (** Progress thru function definitions, adding to fdecls table *)
 fun checkprogram {ddecls, gdecls, fdefns, main} =
   let val predecls = ddecls @ gdecls
-      fun checkaccum [] accdecls =
-        (* at the end, check the main block *)
+      (* accumulates function definitions *)
+      fun checkaccum [] (accdecls: ftable) =
+        (* last step: no more functions, check the main block if exists *)
         (case main of
              SOME mainblock => 
              let val (initerrs, _) = checkinit predecls (#2 mainblock)
@@ -346,7 +358,10 @@ fun checkprogram {ddecls, gdecls, fdefns, main} =
              end 
            | NONE => [])
         | checkaccum ((fdefn as (fdecl, fbody)) :: fdefns) accdecls =
-          (checkproc predecls accdecls fdefn)
+          (if isSome flookup fdecl accdels
+           then ["*** Error: function redeclaration: " ^ (#fname fdecl)]
+           else [])
+          @ (checkproc predecls accdedcls fdefn)
           @ (checkaccum fdefns (fdecl::accdecls))
   in checkaccum fdefns []
   end

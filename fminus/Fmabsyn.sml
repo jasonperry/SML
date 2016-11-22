@@ -1,9 +1,11 @@
 (* Fmabsyn.sml  -- the abstract syntax datatype *)
 
 (* Some subtyping? Eq, Ord, Num, *)
-datatype valtype = FmInt | FmBool | FmUnit (* | FmArray of valtype * int *)
+datatype valtype = FmInt | FmDouble | FmBool | FmUnit (* | FmArray of valtype * int *)
 
-fun typestr FmInt = "int" 
+(* Strings for types, for use in type checker messages *)
+fun typestr FmInt = "int"
+  | typestr FmDouble = "double"
   | typestr FmBool = "bool"
   | typestr FmUnit = "unit"  
 
@@ -22,9 +24,12 @@ type symentry = { name: string, vtype: valtype, sclass: storeclass }
 
 type symtable = symentry list (* (string * valtype) list *)
 
-datatype expr = ConstExpr of int
+datatype expr = TE of uexpr * valtype (* for type decoration *)
+              | UE of uexpr
+and uexpr = ConstExpr of int
+              | ConstDouble of real
               | ConstBool of bool
-              | VarExpr of string
+              | VarExpr of string (* becomes symentry ref *)
               | NotExpr of expr
               | BoolExpr of boolop * expr * expr
               | CompExpr of relop * expr * expr
@@ -32,14 +37,12 @@ datatype expr = ConstExpr of int
               | IfExpr of expr * expr * expr
               | FunCallExpr of string * (expr list)
 
-type texpr = expr * valtype
-
-datatype stmt = AssignStmt of string * expr 
+datatype stmt = AssignStmt of string * expr (* Symentry ref here too? *)
               | IfStmt of expr * sblock * sblock option
               | WhileStmt of expr * sblock
               | ForStmt of stmt * expr * stmt * sblock
               | PrintStmt of expr
-              | CallStmt of string * expr list
+              | CallStmt of string * expr list (* ftable ref? *)
               | ReturnStmt of expr option
               | BreakStmt of {pos: srcpos}
 withtype sblock = symtable * stmt list

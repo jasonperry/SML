@@ -19,11 +19,12 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %}
 /* Should have location (line, offset) pairs for everything? */
 %token <int> INT
+%token <real> DOUBLE
 %token <string> NAME
 %token PLUS MINUS TIMES DIV MOD BITAND BITOR XOR LSHIFT RSHIFT
 %token EQ NE LT LE GE GT
 %token ASSIGN COLON COMMA DASHARROW SEMI 
-%token INTTYPE BOOLTYPE
+%token INTTYPE BOOLTYPE DBLTYPE
 %token INDATA OUTDATA
 %token AND OR NOT
 %token TRUE FALSE
@@ -91,22 +92,23 @@ Ddecls:
   | Ddecl SEMI Ddecls                   { $1 :: $3 }
 ;
 Ddecl:
-    INDATA NAME COLON Typeexp             { {name=$2, vtype=$4, sclass=Indata} }
-  | OUTDATA NAME COLON Typeexp            { {name=$2, vtype=$4, sclass=Outdata} }
+    INDATA NAME COLON Typeexp           { {name=$2, vtype=$4, sclass=Indata} }
+  | OUTDATA NAME COLON Typeexp          { {name=$2, vtype=$4, sclass=Outdata} }
 ;
 Vdecls:
     /* empty */                         { [] }
   | Vdecl SEMI Vdecls                   { $1 @ $3 }
 ;
 Vdecl: 
-    VAR Varlist COLON Typeexp              { map (fn v => (v, $4)) $2 }
+    VAR Varlist COLON Typeexp           { map (fn v => (v, $4)) $2 }
 ;
 Varlist:
-    NAME                                 { [$1] }
-  | Varlist COMMA NAME                   { $1 @ [$3] }
+    NAME                                { [$1] }
+  | Varlist COMMA NAME                  { $1 @ [$3] }
 ;
 Typeexp: 
     INTTYPE                             { FmInt }
+  | DBLTYPE                             { FmDouble }
   | BOOLTYPE                            { FmBool }
 ;
 Fdefns:
@@ -148,7 +150,7 @@ LineStmt:
   | BreakStmt                           { $1 }
 ;
 BlockStmt:
-  | ForStmt                             { $1 }
+    ForStmt                             { $1 }
   | WhileStmt                           { $1 }
   | IfStmt                              { $1 }
 ;
@@ -193,34 +195,36 @@ Expr:
 ;
 
 VarExpr: 
-    NAME                                { VarExpr $1 }
+    NAME                                { UE (VarExpr $1) }
 ;
 // All RelExprs have type bool, but AssocExprs can have type bool also.
 RelExpr:
-    AssocExpr EQ AssocExpr                      { CompExpr (Eq, $1, $3) }
-  | AssocExpr NE AssocExpr                      { CompExpr (Ne, $1, $3) }
-  | AssocExpr LT AssocExpr                      { CompExpr (Lt, $1, $3) }
-  | AssocExpr LE AssocExpr                      { CompExpr (Le, $1, $3) }
-  | AssocExpr GT AssocExpr                      { CompExpr (Gt, $1, $3) }
-  | AssocExpr GE AssocExpr                      { CompExpr (Ge, $1, $3) }
-  | NOT RelExpr                                 { NotExpr $2 }
-  | RelExpr AND RelExpr                         { BoolExpr (And, $1, $3) }
-  | RelExpr OR RelExpr                          { BoolExpr (Or, $1, $3) }
+    AssocExpr EQ AssocExpr              { UE (CompExpr (Eq, $1, $3)) }
+  | AssocExpr NE AssocExpr              { UE (CompExpr (Ne, $1, $3)) }
+  | AssocExpr LT AssocExpr              { UE (CompExpr (Lt, $1, $3)) }
+  | AssocExpr LE AssocExpr              { UE (CompExpr (Le, $1, $3)) }
+  | AssocExpr GT AssocExpr              { UE (CompExpr (Gt, $1, $3)) }
+  | AssocExpr GE AssocExpr              { UE (CompExpr (Ge, $1, $3)) }
+  | NOT RelExpr                         { UE (NotExpr $2) }
+  | RelExpr AND RelExpr                 { UE (BoolExpr (And, $1, $3)) }
+  | RelExpr OR RelExpr                  { UE (BoolExpr (Or, $1, $3)) }
 ;
 AssocExpr:
-    INT                                         { ConstExpr $1 }
-  | TRUE                                        { ConstBool true }
-  | FALSE                                       { ConstBool false }
-  | VarExpr                                     { $1 }
-  | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr { IfExpr ($3, $6, $8) }
-  | AssocExpr DIV AssocExpr                     { ArithExpr (Div, $1, $3) }
-  | AssocExpr MOD AssocExpr                     { ArithExpr (Mod, $1, $3) }
-  | AssocExpr TIMES AssocExpr                   { ArithExpr (Times, $1, $3) }
-  | AssocExpr PLUS AssocExpr                    { ArithExpr (Plus, $1, $3) }
-  | AssocExpr MINUS AssocExpr                   { ArithExpr (Minus, $1, $3) }
-  | AssocExpr XOR AssocExpr                     { ArithExpr (Xor, $1, $3) }
-  | AssocExpr BITOR AssocExpr                   { ArithExpr (Bitor, $1, $3) }
-  | AssocExpr BITAND AssocExpr                  { ArithExpr (Bitand, $1, $3) }
-  | NAME LPAR Args RPAR                         { FunCallExpr ($1, $3) }
+    INT                                 { UE (ConstExpr $1) }
+  | DOUBLE                              { UE (ConstDouble $1) }
+  | TRUE                                { UE (ConstBool true) }
+  | FALSE                               { UE (ConstBool false) }
+  | VarExpr                             { $1 }
+  | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr { UE (IfExpr ($3, $6, $8)) }
+  | AssocExpr DIV AssocExpr             { UE (ArithExpr (Div, $1, $3)) }
+  | AssocExpr MOD AssocExpr             { UE (ArithExpr (Mod, $1, $3)) }
+  | AssocExpr TIMES AssocExpr           { UE (ArithExpr (Times, $1, $3)) }
+  | AssocExpr PLUS AssocExpr            { UE (ArithExpr (Plus, $1, $3)) }
+  | AssocExpr MINUS AssocExpr           { UE (ArithExpr (Minus, $1, $3)) }
+  | AssocExpr XOR AssocExpr             { UE (ArithExpr (Xor, $1, $3)) }
+  | AssocExpr BITOR AssocExpr           { UE (ArithExpr (Bitor, $1, $3)) }
+  | AssocExpr BITAND AssocExpr          { UE (ArithExpr (Bitand, $1, $3)) }
+  | NAME LPAR Args RPAR                 { UE (FunCallExpr ($1, $3)) }
 ;
-// StringExpr // for concatenation and such. 
+// StringExpr // for concatenation and such.
+// probably should just include as assocExpr and save it for the typechecker.

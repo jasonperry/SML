@@ -24,6 +24,7 @@
          "var"          => VAR
        | "proc"         => PROC
        | "int"          => INTTYPE
+       | "double"       => DBLTYPE
        | "bool"         => BOOLTYPE
 (*       | "case"         => CASE
          | "of"           => OF *)
@@ -51,6 +52,11 @@
 rule Token = parse (* TODO: strings *)
     [` ` `\t` `\r`]     { Token lexbuf }
   | [`\n`]              { lineno := !lineno + 1; Token lexbuf }
+  | `-`?[`0`-`9`]+`.`[`0`-`9`]+ { case Real.fromString (getLexeme lexbuf) of
+                                   NONE   => lexerError lexbuf "internal error"
+                                 | SOME d => DOUBLE d
+
+                        }
   | `-`?[`0`-`9`]+      { case Int.fromString (getLexeme lexbuf) of
                                NONE   => lexerError lexbuf "internal error"
                              | SOME i => INT i
