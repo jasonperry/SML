@@ -43,8 +43,7 @@ fun parseReport file stream lexbuf =
 fun createLexerStream (is : BasicIO.instream) =
   Lexing.createLexer (fn buff => fn n => Nonstdio.buff_input is buff 0 n)
 
-(* Parse a program from a file *)
-
+(** Parse a program from a file - change to get two trees? *)
 fun parse file =
     let val is     = Nonstdio.open_in_bin file
         val lexbuf = createLexerStream is

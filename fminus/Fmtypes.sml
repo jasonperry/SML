@@ -3,8 +3,8 @@
 open Fmabsyn;
 
 (** Type-checking functions return a type or a list of errors *)
-datatype checkResult = T of expr (* Stitch 'em like a monad? *)
-                     | B of string list * expr (* errors *)
+datatype checkExprResult = T of expr (* Stitch 'em like a monad? *)
+                         | B of string list * expr (* errors *) 
 
 (* should check decls and types in different fns? *)
 
@@ -32,96 +32,103 @@ fun intersect_syms l1 [] = []
     then entry::(intersect_syms es l2)
     else (intersect_syms es l2)
 
-
-(** typecheck an expression - should take uexpr now? *)
-fun checkexpr (decls: symtable * ftable) (e as (ConstExpr _)) =
-  T (TE (e, FmInt)) (* could just always return pair, and if UE it's errors *)
-  | checkexpr _ (ConstDouble _) = T FmDouble
-  | checkexpr _ (ConstBool _) = T FmBool
-  | checkexpr (vsyms, _) (VarExpr var) = 
-    (case (vlookup vsyms var)
-      of SOME entry => T (#vtype entry)
-      |  NONE => B ["Undefined variable: " ^ var])
-  | checkexpr decls (NotExpr expr) = (
+(** typecheck an expression. Take uexpr and return (expr, message)
+  *  First case: expression already typed, just return *)
+fun checkexpr (decls: symtable * ftable) (TE (expr, t1)) = (TE (expr, t1), [])
+  | checkexpr _ (UE (e as (ConstExpr _))) = (TE (e, FmInt), [])
+  | checkexpr _ (UE (e as (ConstDouble _))) = (TE (e, FmDouble), [])
+  | checkexpr _ (UE (e as (ConstBool _))) = (TE (e, FmBool), [])
+  | checkexpr (vsyms, _) (UE (e as (VarExpr var))) = (
+    case (vlookup vsyms var)
+     of SOME entry => (TE (e, (#vtype entry)), [])
+     |  NONE => (UE e, ["Undefined variable: " ^ var]) )
+  | checkexpr decls (UE (NotExpr expr)) = (
       case (checkexpr decls expr)
-       of B errs => B errs
-        | T FmBool => T FmBool
-        | T other => B ["Non-boolean type :" ^ (typestr other) ^ 
-                        "in 'not' expression"])
-  | checkexpr decls (BoolExpr (oper, e1, e2)) = 
-    (case (checkexpr decls e1, checkexpr decls e2) 
-      of (B err1, B err2) => B (err1 @ err2)
-       | (B err1, T _) => B err1
-       | (T _, B err2) => B err2
-       | (T FmBool, T FmBool) => T FmBool
-       | (T o1, T o2) => 
-         B ["Non-boolean type : (" ^ (typestr o1) ^ "," ^
-            (typestr o2) ^ ") in Boolean expression"])
-  | checkexpr decls (CompExpr (oper, e1, e2)) = 
-    (case (checkexpr decls e1, checkexpr decls e2) 
-      of (B err1, B err2) => B (err1 @ err2)
-       | (B err1, T _) => B err1
-       | (T _, B err2) => B err2
-       | (T t1, T t2) => 
-         if t1 <> t2 
-         then B ["Different types in comparison: (" ^
-                 (typestr t1) ^ ", " ^ (typestr t2) ^ ")"]
-         else (if (oper = gt orelse oper = ge orelse oper = lt
-                   orelse oper = le) andalso
-                  (t1 <> FmInt andalso t1 <> FmDouble)
-               then B ["Ordered comparison of non-ordered type: " ^ typestr t1]
-               else T FmBool) )
-  | checkexpr decls (ArithExpr (oper, e1, e2)) = 
-    (case (checkexpr decls e1, checkexpr decls e2) 
-      of (B err1, B err2) => B (err1 @ err2)
-       | (B err1, T _) => B err1
-       | (T _, B err2) => B err2
-       | (T FmInt, T FmInt) => T FmInt
-       | (T FmDouble, T FmDouble) => T FmDouble
-       | (T t1, T t2) =>
-         if t1 <> t2
-         then B ["Incompatible types in arithmetic expr: (" ^ 
-                 (typestr t1) ^ ", " ^ (typestr t2) ^ ")"]
-         else B ["Non-numeric type in expression: " ^ (typestr t1)])
-  | checkexpr decls (IfExpr (ifexp, thenexp, elsexp)) = 
-    (case checkexpr decls ifexp (* Good candidate for monadization *)
-      of B err => B err
-      |  T iftype => 
-         if iftype <> FmBool 
-         then B ["Non-boolean type for test expression: "
-                 ^ typestr iftype]
-         else (case checkexpr decls thenexp 
-                of B err => B err
-                 | T thentype => 
-                   (case checkexpr decls elsexp
-                     of B err => B err
-                      | T elstype => 
-                        if thentype <> elstype
-                        then B ["Non-matching types ("
-                                ^ (typestr thentype) ^ ", "
-                                ^ (typestr elstype) ^ ") for then/else"]
-                        else T thentype)))
-  | checkexpr (decls as (vsyms, fdecls)) (FunCallExpr (fname, fnargs)) = 
-    (case flookup fdecls fname 
-      of NONE => B ["Unrecognized function name: " ^ fname]
-      |  SOME {fname, argdecls, rettype} =>
-         (* List of errors in matching, empty if OK *)
-         let fun matchargs [] [] = [] 
-               | matchargs (p::ps) [] = ["Not enough arguments to " ^ fname]
-               | matchargs [] (p::ps) = ["Too many arguments to " ^ fname]
-               | matchargs ({name, vtype, sclass}::ps) (arg::args) = 
-                 case checkexpr decls arg
-                  of B errs => errs @ (matchargs ps args) (* Keep going *)
-                  | T atype => if atype = vtype
-                               then matchargs ps args
-                               else "Non-matching argument types: " ^ 
-                                    (typestr vtype) ^ ", " ^ 
-                                    (typestr atype) :: (matchargs ps args)
-         in
-             case matchargs argdecls fnargs
-              of [] => T rettype
-               | errs => B errs
-         end)
+       of (UE e, errs) => (UE (NotExpr (UE e)), errs) (* propagate up *)
+        | (e as TE (_, FmBool), msgs) => (TE (NotExpr e, FmBool),
+                                          msgs)
+        | (e as TE (_, t1), msgs) => (UE (NotExpr e),
+                                      msgs @ ["Non-boolean type :"
+                                              ^ (typestr t1)
+                                              ^ "in 'not' expression"]) )
+  | checkexpr decls (UE (BoolExpr (oper, e1, e2))) = (
+    case (checkexpr decls e1, checkexpr decls e2)
+     of ((UE ee1, errs1), (UE ee2, errs2)) =>
+        (UE (BoolExpr (oper, UE ee1, UE ee2)), errs1 @ errs2)
+      | ((UE ee1, errs1), (TE e2, msgs)) =>
+        (UE (BoolExpr (oper, UE ee1, TE e2)), errs1 @ msgs)
+      | ((TE e1, msgs), (UE ee2, errs2)) =>
+        (UE (BoolExpr (oper, TE e1, UE ee2)), msgs @ errs2)
+      | ((e1 as TE (_, FmBool), msgs1), (e2 as TE (_, FmBool), msgs2)) =>
+        (TE (BoolExpr (oper, e1, e2), FmBool), msgs1 @ msgs2)
+      | (T o1, T o2) => (* stopping here. boilerplate! *)
+        B ["Non-boolean type : (" ^ (typestr o1) ^ "," ^
+           (typestr o2) ^ ") in Boolean expression"] )
+  | checkexpr decls (CompExpr (oper, e1, e2)) = (
+    case (checkexpr decls e1, checkexpr decls e2) 
+     of (B err1, B err2) => B (err1 @ err2)
+      | (B err1, T _) => B err1
+      | (T _, B err2) => B err2
+      | (T t1, T t2) => 
+        if t1 <> t2 
+        then B ["Different types in comparison: (" ^
+                (typestr t1) ^ ", " ^ (typestr t2) ^ ")"]
+        else (if (oper = gt orelse oper = ge orelse oper = lt
+                  orelse oper = le) andalso
+                 (t1 <> FmInt andalso t1 <> FmDouble)
+              then B ["Ordered comparison of non-ordered type: " ^ typestr t1]
+              else T FmBool) )
+  | checkexpr decls (ArithExpr (oper, e1, e2)) = (
+    case (checkexpr decls e1, checkexpr decls e2) 
+     of (B err1, B err2) => B (err1 @ err2)
+      | (B err1, T _) => B err1
+      | (T _, B err2) => B err2
+      | (T FmInt, T FmInt) => T FmInt
+      | (T FmDouble, T FmDouble) => T FmDouble
+      | (T t1, T t2) =>
+        if t1 <> t2
+        then B ["Incompatible types in arithmetic expr: (" ^ 
+                (typestr t1) ^ ", " ^ (typestr t2) ^ ")"]
+        else B ["Non-numeric type in expression: " ^ (typestr t1)] )
+  | checkexpr decls (IfExpr (ifexp, thenexp, elsexp)) = (
+    case checkexpr decls ifexp (* Good candidate for monadization *)
+     of B err => B err
+     |  T iftype => 
+        if iftype <> FmBool 
+        then B ["Non-boolean type for test expression: "
+                ^ typestr iftype]
+        else (case checkexpr decls thenexp 
+               of B err => B err
+                | T thentype => 
+                  (case checkexpr decls elsexp
+                    of B err => B err
+                     | T elstype => 
+                       if thentype <> elstype
+                       then B ["Non-matching types ("
+                               ^ (typestr thentype) ^ ", "
+                               ^ (typestr elstype) ^ ") for then/else"]
+                       else T thentype) ) )
+  | checkexpr (decls as (vsyms, fdecls)) (FunCallExpr (fname, fnargs)) = (
+      case flookup fdecls fname 
+       of NONE => B ["Unrecognized function name: " ^ fname]
+       |  SOME {fname, argdecls, rettype} =>
+          (* List of errors in matching, empty if OK *)
+          let fun matchargs [] [] = [] 
+                | matchargs (p::ps) [] = ["Not enough arguments to " ^ fname]
+                | matchargs [] (p::ps) = ["Too many arguments to " ^ fname]
+                | matchargs ({name, vtype, sclass}::ps) (arg::args) = 
+                  case checkexpr decls arg
+                   of B errs => errs @ (matchargs ps args) (* Keep going *)
+                    | T atype => if atype = vtype
+                                 then matchargs ps args
+                                 else "Non-matching argument types: " ^ 
+                                      (typestr vtype) ^ ", " ^ 
+                                      (typestr atype) :: (matchargs ps args)
+          in
+              case matchargs argdecls fnargs
+               of [] => T rettype
+                | errs => B errs
+          end )
 
                     
 (** Check that all statements in a list are reachable. *) 
@@ -147,7 +154,7 @@ fun checkbreak [] = []
       | IfStmt (_, (_, thenstmts), NONE) =>
         (checkbreak thenstmts) @ (checkbreak stmts)
       | _ => checkbreak stmts
-                  
+
 
 (** Typecheck single statement, returning list of errors *)
 (* Only take most local matching name. If type doesn't match, then error. *)

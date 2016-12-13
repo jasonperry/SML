@@ -1,13 +1,14 @@
 (* Fmabsyn.sml  -- the abstract syntax datatype *)
 
 (* Some subtyping? Eq, Ord, Num, *)
-datatype valtype = FmInt | FmDouble | FmBool | FmUnit (* | FmArray of valtype * int *)
+datatype valtype = FmInt | FmDouble | FmBool | FmUnit (* | Untyped *)
+                   (* | FmArray of valtype * int *)
 
 (* Strings for types, for use in type checker messages *)
 fun typestr FmInt = "int"
   | typestr FmDouble = "double"
   | typestr FmBool = "bool"
-  | typestr FmUnit = "unit"  
+  | typestr FmUnit = "unit"
 
 datatype storeclass = Indata | Outdata | Global | Local | Arg
 
@@ -22,7 +23,7 @@ datatype boolop = And | Or
 (* TODO: hashtable indexed by name *)
 type symentry = { name: string, vtype: valtype, sclass: storeclass }
 
-type symtable = symentry list (* (string * valtype) list *)
+type symtable = symentry list
 
 datatype expr = TE of uexpr * valtype (* for type decoration *)
               | UE of uexpr
@@ -37,7 +38,9 @@ and uexpr = ConstExpr of int
               | IfExpr of expr * expr * expr
               | FunCallExpr of string * (expr list)
 
-datatype stmt = AssignStmt of string * expr (* Symentry ref here too? *)
+(** for now, only statements can have position info--good compromise *)
+datatype stmt = AssignStmt of string * expr (* Symentry ref here too?
+                                             * lvalue type? *)
               | IfStmt of expr * sblock * sblock option
               | WhileStmt of expr * sblock
               | ForStmt of stmt * expr * stmt * sblock
@@ -48,7 +51,7 @@ datatype stmt = AssignStmt of string * expr (* Symentry ref here too? *)
 withtype sblock = symtable * stmt list
 
 type fdecl = { fname: string, 
-               argdecls: symentry list, (* (string * valtype) list, *)
+               argdecls: symentry list,
                rettype: valtype }
 
 type ftable = fdecl list

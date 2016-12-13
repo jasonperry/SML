@@ -37,6 +37,7 @@ fun printdecl {name, vtype, sclass} =
     | FmBool => "bool " ^ name
     | _ => raise Unsupported ("Unsupported type: " ^ (typestr vtype))
 
+(** Print expression in C code. *)
 fun printexpr (ConstExpr n) = Int.toString n
   | printexpr (ConstBool b) = if b then "1" else "0"
   | printexpr (ConstDouble d) = Real.toString d
