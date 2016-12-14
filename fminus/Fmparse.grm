@@ -116,8 +116,9 @@ Fdefns:
   | Fdefn Fdefns                        { $1 :: $2 }
 ;
 Fdefn: 
-  PROC NAME LPAR Params RPAR Ftype Sblock { ({fname=$2, argdecls=(addstoretype Arg $4), 
-                                              rettype=$6}, $7) }
+    PROC NAME LPAR Params RPAR Ftype Sblock { ({fname=$2,
+                                                argdecls=(addstoretype Arg $4), 
+                                                rettype=$6}, $7) }
 ;
 Params: 
     /* empty */                         { [] }
@@ -184,7 +185,7 @@ BreakStmt:
 Args: 
     /* empty */                         { [] }
   | Expr                                { [$1] }     // Allows dangling comma
-  | Expr COMMA Args                     { $1 :: $3 } // OK if a non-var used to call a fun?
+  | Expr COMMA Args                     { $1 :: $3 }
 ;
 
 Expr:
@@ -195,36 +196,56 @@ Expr:
 ;
 
 VarExpr: 
-    NAME                                { UE (VarExpr $1) }
+    NAME                                { {etree=VarExpr $1, typ=Untyped} }
 ;
 // All RelExprs have type bool, but AssocExprs can have type bool also.
 RelExpr:
-    AssocExpr EQ AssocExpr              { UE (CompExpr (Eq, $1, $3)) }
-  | AssocExpr NE AssocExpr              { UE (CompExpr (Ne, $1, $3)) }
-  | AssocExpr LT AssocExpr              { UE (CompExpr (Lt, $1, $3)) }
-  | AssocExpr LE AssocExpr              { UE (CompExpr (Le, $1, $3)) }
-  | AssocExpr GT AssocExpr              { UE (CompExpr (Gt, $1, $3)) }
-  | AssocExpr GE AssocExpr              { UE (CompExpr (Ge, $1, $3)) }
-  | NOT RelExpr                         { UE (NotExpr $2) }
-  | RelExpr AND RelExpr                 { UE (BoolExpr (And, $1, $3)) }
-  | RelExpr OR RelExpr                  { UE (BoolExpr (Or, $1, $3)) }
+    AssocExpr EQ AssocExpr              { {etree=CompExpr (Eq, $1, $3),
+                                           typ=Untyped } }
+  | AssocExpr NE AssocExpr              { {etree=CompExpr (Ne, $1, $3),
+                                           typ=Untyped } }
+  | AssocExpr LT AssocExpr              { {etree=CompExpr (Lt, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr LE AssocExpr              { {etree=CompExpr (Le, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr GT AssocExpr              { {etree=CompExpr (Gt, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr GE AssocExpr              { {etree=CompExpr (Ge, $1, $3),
+                                           typ=Untyped} }
+  | NOT RelExpr                         { {etree=NotExpr $2,
+                                           typ=Untyped} }
+  | RelExpr AND RelExpr                 { {etree=BoolExpr (And, $1, $3),
+                                           typ=Untyped} }
+  | RelExpr OR RelExpr                  { {etree=BoolExpr (Or, $1, $3),
+                                           typ=Untyped} }
+
 ;
 AssocExpr:
-    INT                                 { UE (ConstExpr $1) }
-  | DOUBLE                              { UE (ConstDouble $1) }
-  | TRUE                                { UE (ConstBool true) }
-  | FALSE                               { UE (ConstBool false) }
+    INT                                 { {etree=ConstInt $1, typ=Untyped} }
+  | DOUBLE                              { {etree=ConstDouble $1, typ=Untyped} }
+  | TRUE                                { {etree=ConstBool true, typ=Untyped} }
+  | FALSE                               { {etree=ConstBool false, typ=Untyped} }
   | VarExpr                             { $1 }
-  | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr { UE (IfExpr ($3, $6, $8)) }
-  | AssocExpr DIV AssocExpr             { UE (ArithExpr (Div, $1, $3)) }
-  | AssocExpr MOD AssocExpr             { UE (ArithExpr (Mod, $1, $3)) }
-  | AssocExpr TIMES AssocExpr           { UE (ArithExpr (Times, $1, $3)) }
-  | AssocExpr PLUS AssocExpr            { UE (ArithExpr (Plus, $1, $3)) }
-  | AssocExpr MINUS AssocExpr           { UE (ArithExpr (Minus, $1, $3)) }
-  | AssocExpr XOR AssocExpr             { UE (ArithExpr (Xor, $1, $3)) }
-  | AssocExpr BITOR AssocExpr           { UE (ArithExpr (Bitor, $1, $3)) }
-  | AssocExpr BITAND AssocExpr          { UE (ArithExpr (Bitand, $1, $3)) }
-  | NAME LPAR Args RPAR                 { UE (FunCallExpr ($1, $3)) }
+  | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr { {etree=IfExpr ($3, $6, $8),
+                                                          typ=Untyped} }
+  | AssocExpr DIV AssocExpr             { {etree=ArithExpr (Div, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr MOD AssocExpr             { {etree=ArithExpr (Mod, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr TIMES AssocExpr           { {etree=ArithExpr (Times, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr PLUS AssocExpr            { {etree=ArithExpr (Plus, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr MINUS AssocExpr           { {etree=ArithExpr (Minus, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr XOR AssocExpr             { {etree=ArithExpr (Xor, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr BITOR AssocExpr           { {etree=ArithExpr (Bitor, $1, $3),
+                                           typ=Untyped} }
+  | AssocExpr BITAND AssocExpr          { {etree=ArithExpr (Bitand, $1, $3),
+                                           typ=Untyped} }
+  | NAME LPAR Args RPAR                 { {etree=FunCallExpr ($1, $3),
+                                           typ=Untyped} }
 ;
 // StringExpr // for concatenation and such.
 // probably should just include as assocExpr and save it for the typechecker.

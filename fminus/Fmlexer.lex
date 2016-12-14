@@ -14,7 +14,7 @@
      
  val commentDepth = ref 0;  (* Current comment nesting *)
 
- val lineno = ref 0; 
+ val lineno = ref 0;
                                 
  (* Scan keywords as identifiers and use this function to distinguish them. *)
  (* If the set of keywords is large, use an auxiliary hashtable.            *)

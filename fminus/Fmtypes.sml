@@ -32,40 +32,41 @@ fun intersect_syms l1 [] = []
     then entry::(intersect_syms es l2)
     else (intersect_syms es l2)
 
-(** typecheck an expression. Take uexpr and return (expr, message)
-  *  First case: expression already typed, just return *)
-fun checkexpr (decls: symtable * ftable) (TE (expr, t1)) = (TE (expr, t1), [])
-  | checkexpr _ (UE (e as (ConstExpr _))) = (TE (e, FmInt), [])
-  | checkexpr _ (UE (e as (ConstDouble _))) = (TE (e, FmDouble), [])
-  | checkexpr _ (UE (e as (ConstBool _))) = (TE (e, FmBool), [])
-  | checkexpr (vsyms, _) (UE (e as (VarExpr var))) = (
+(** Assign a type to an expression. Take expr and return expr, msgs pair *)
+fun typeexpr (decls: symtable * ftable) {etree=ConstInt i, typ=_} =
+    ({etree=ConstInt i, typ=FmInt}, [])
+  | typeexpr _ {etree=ConstDouble d, typ=_} =
+    ({etree=ConstDouble d, typ=FmDouble}, [])
+  | typeexpr _ {etree=ConstBool b, typ=_} =
+    ({etree=ConstBool b, typ=FmBool}, [])
+  | typeexpr (vsyms, _) (e as {etree=VarExpr var, typ=_}) = (
     case (vlookup vsyms var)
-     of SOME entry => (TE (e, (#vtype entry)), [])
-     |  NONE => (UE e, ["Undefined variable: " ^ var]) )
-  | checkexpr decls (UE (NotExpr expr)) = (
-      case (checkexpr decls expr)
-       of (UE e, errs) => (UE (NotExpr (UE e)), errs) (* propagate up *)
-        | (e as TE (_, FmBool), msgs) => (TE (NotExpr e, FmBool),
-                                          msgs)
-        | (e as TE (_, t1), msgs) => (UE (NotExpr e),
-                                      msgs @ ["Non-boolean type :"
-                                              ^ (typestr t1)
-                                              ^ "in 'not' expression"]) )
-  | checkexpr decls (UE (BoolExpr (oper, e1, e2))) = (
-    case (checkexpr decls e1, checkexpr decls e2)
-     of ((UE ee1, errs1), (UE ee2, errs2)) =>
-        (UE (BoolExpr (oper, UE ee1, UE ee2)), errs1 @ errs2)
-      | ((UE ee1, errs1), (TE e2, msgs)) =>
-        (UE (BoolExpr (oper, UE ee1, TE e2)), errs1 @ msgs)
-      | ((TE e1, msgs), (UE ee2, errs2)) =>
-        (UE (BoolExpr (oper, TE e1, UE ee2)), msgs @ errs2)
-      | ((e1 as TE (_, FmBool), msgs1), (e2 as TE (_, FmBool), msgs2)) =>
-        (TE (BoolExpr (oper, e1, e2), FmBool), msgs1 @ msgs2)
+     of SOME entry => ({etree=VarExpr var, typ=(#vtype entry)}, [])
+     |  NONE => (e, ["Undefined variable: " ^ var]) )
+  | typeexpr decls {etree=NotExpr e1, typ=_} = (
+      case typeexpr decls e1
+       of ({etree=e, typ=Untyped}, errs) =>
+          ({etree=NotExpr e, typ=Untyped}, errs) (* propagate untypedness *)
+        | ({etree=e, typ=FmBool}, msgs) =>
+          ({etree=NotExpr e, typ=FmBool}, msgs)
+        | ({etree=e, typ=t1}, msgs) =>
+          ({etree=NotExpr e, typ=Untyped},
+           msgs @ ["Non-boolean type :" ^ (typestr t1)
+                   ^ "in 'not' expression"]) )
+  | typeexpr decls {etree=BoolExpr (oper, e1, e2), typ=_} = (
+    case (typeexpr decls e1, typeexpr decls e2)
+     of ( (ee1 as {etree=_, typ=Untyped}, errs1), (ee2, msgs2) ) =>
+        ({etree=BoolExpr (oper, ee1, ee2), typ=Untyped}, errs1 @ msgs2)
+      | ( (ee1, msgs1), (ee2 as {etree=ee2, typ=Untyped}, errs2) ) =>
+        ({etree=BoolExpr (oper, ee1, ee2), typ=Untyped}, msgs1 @ errs2)
+      | ( (ee1 as {etree=_, typ=FmBool}, msgs1),
+          (ee2 as {etree=_, typ=FmBool}, msgs2) ) =>
+        ({etree=BoolExpr (oper, ee1, ee2), typ=FmBool} msgs1 @ msgs2)
       | (T o1, T o2) => (* stopping here. boilerplate! *)
         B ["Non-boolean type : (" ^ (typestr o1) ^ "," ^
            (typestr o2) ^ ") in Boolean expression"] )
-  | checkexpr decls (CompExpr (oper, e1, e2)) = (
-    case (checkexpr decls e1, checkexpr decls e2) 
+  | typeexpr decls (CompExpr (oper, e1, e2)) = (
+    case (typeexpr decls e1, typeexpr decls e2) 
      of (B err1, B err2) => B (err1 @ err2)
       | (B err1, T _) => B err1
       | (T _, B err2) => B err2
@@ -78,8 +79,8 @@ fun checkexpr (decls: symtable * ftable) (TE (expr, t1)) = (TE (expr, t1), [])
                  (t1 <> FmInt andalso t1 <> FmDouble)
               then B ["Ordered comparison of non-ordered type: " ^ typestr t1]
               else T FmBool) )
-  | checkexpr decls (ArithExpr (oper, e1, e2)) = (
-    case (checkexpr decls e1, checkexpr decls e2) 
+  | typeexpr decls (ArithExpr (oper, e1, e2)) = (
+    case (typeexpr decls e1, typeexpr decls e2) 
      of (B err1, B err2) => B (err1 @ err2)
       | (B err1, T _) => B err1
       | (T _, B err2) => B err2
@@ -90,17 +91,17 @@ fun checkexpr (decls: symtable * ftable) (TE (expr, t1)) = (TE (expr, t1), [])
         then B ["Incompatible types in arithmetic expr: (" ^ 
                 (typestr t1) ^ ", " ^ (typestr t2) ^ ")"]
         else B ["Non-numeric type in expression: " ^ (typestr t1)] )
-  | checkexpr decls (IfExpr (ifexp, thenexp, elsexp)) = (
-    case checkexpr decls ifexp (* Good candidate for monadization *)
+  | typeexpr decls (IfExpr (ifexp, thenexp, elsexp)) = (
+    case typeexpr decls ifexp (* Good candidate for monadization *)
      of B err => B err
      |  T iftype => 
         if iftype <> FmBool 
         then B ["Non-boolean type for test expression: "
                 ^ typestr iftype]
-        else (case checkexpr decls thenexp 
+        else (case typeexpr decls thenexp 
                of B err => B err
                 | T thentype => 
-                  (case checkexpr decls elsexp
+                  (case typeexpr decls elsexp
                     of B err => B err
                      | T elstype => 
                        if thentype <> elstype
@@ -108,7 +109,7 @@ fun checkexpr (decls: symtable * ftable) (TE (expr, t1)) = (TE (expr, t1), [])
                                ^ (typestr thentype) ^ ", "
                                ^ (typestr elstype) ^ ") for then/else"]
                        else T thentype) ) )
-  | checkexpr (decls as (vsyms, fdecls)) (FunCallExpr (fname, fnargs)) = (
+  | typeexpr (decls as (vsyms, fdecls)) (FunCallExpr (fname, fnargs)) = (
       case flookup fdecls fname 
        of NONE => B ["Unrecognized function name: " ^ fname]
        |  SOME {fname, argdecls, rettype} =>
@@ -117,7 +118,7 @@ fun checkexpr (decls: symtable * ftable) (TE (expr, t1)) = (TE (expr, t1), [])
                 | matchargs (p::ps) [] = ["Not enough arguments to " ^ fname]
                 | matchargs [] (p::ps) = ["Too many arguments to " ^ fname]
                 | matchargs ({name, vtype, sclass}::ps) (arg::args) = 
-                  case checkexpr decls arg
+                  case typeexpr decls arg
                    of B errs => errs @ (matchargs ps args) (* Keep going *)
                     | T atype => if atype = vtype
                                  then matchargs ps args
@@ -162,7 +163,7 @@ fun checkbreak [] = []
 fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
   case vlookup vsyms var 
    of SOME entry => ( 
-       case checkexpr (vsyms @ adecls, fdecls) expr of
+       case typeexpr (vsyms @ adecls, fdecls) expr of
            B errs => errs
          | T etype => if etype <> (#vtype entry)
                       then ["Assignment type mismatch: "
@@ -175,7 +176,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                               var ^ " not allowed"]))
   | checkstmt vsyms adecls fdecls (IfStmt (cond, thenblock,
                                            elsblock)) = (
-    case checkexpr (vsyms @ adecls, fdecls) cond of
+    case typeexpr (vsyms @ adecls, fdecls) cond of
         B errs => errs
         (* Inner block: outer variables become 'globals' *)
       | T FmBool => (checkblock vsyms adecls fdecls thenblock) @
@@ -184,7 +185,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                                       | NONE => []) 
       | T _  => ["Non-Boolean condition in if statement"])
   | checkstmt vsyms argsyms fdecls (WhileStmt (cond, thenblock)) = (
-        (case checkexpr (vsyms @ argsyms, fdecls) cond of
+        (case typeexpr (vsyms @ argsyms, fdecls) cond of
              B errs => errs
            (* Inner block: outer variables become 'globals' *)
            | T FmBool => []
@@ -195,7 +196,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
   | checkstmt vsyms argsyms fdecls (ForStmt (initstmt, cond, updatestmt,
                                              sblock)) = (
       checkstmt vsyms argsyms fdecls initstmt
-      @ (case checkexpr (vsyms @ argsyms, fdecls) cond of
+      @ (case typeexpr (vsyms @ argsyms, fdecls) cond of
              B errs => errs
            | T FmBool => []
            | T t => ["Non-Boolean condition in 'for' statement: "
@@ -204,19 +205,19 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
       @ checkblock vsyms argsyms fdecls sblock )
 
   | checkstmt vsyms argsyms fdecls (PrintStmt expr) = (
-      case checkexpr (vsyms @ argsyms, fdecls) expr of
+      case typeexpr (vsyms @ argsyms, fdecls) expr of
           B errs => errs
         | T _ => [] )  (* TODO: printable types, from a tenv? *)
 
   | checkstmt vsyms argsyms fdecls (CallStmt call) = (
-      case checkexpr (vsyms @ argsyms, fdecls) (FunCallExpr call) of
+      case typeexpr (vsyms @ argsyms, fdecls) (FunCallExpr call) of
           B errs => errs
         | T FmUnit => []
         | T rettype => ["Discarding return value of type "
                         ^ (typestr rettype)])
 
   | checkstmt vsyms argsyms fdecls (ReturnStmt (SOME expr)) = (
-      case checkexpr (vsyms @ argsyms, fdecls) expr of
+      case typeexpr (vsyms @ argsyms, fdecls) expr of
           B errs => errs
         | T rettype =>
           (case vlookup argsyms "*return*" of

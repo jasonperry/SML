@@ -1,7 +1,7 @@
 (* Fmabsyn.sml  -- the abstract syntax datatype *)
 
 (* Some subtyping? Eq, Ord, Num, *)
-datatype valtype = FmInt | FmDouble | FmBool | FmUnit (* | Untyped *)
+datatype valtype = FmInt | FmDouble | FmBool | FmUnit | Untyped
                    (* | FmArray of valtype * int *)
 
 (* Strings for types, for use in type checker messages *)
@@ -25,19 +25,19 @@ type symentry = { name: string, vtype: valtype, sclass: storeclass }
 
 type symtable = symentry list
 
-datatype expr = TE of uexpr * valtype (* for type decoration *)
-              | UE of uexpr
-and uexpr = ConstExpr of int
-              | ConstDouble of real
-              | ConstBool of bool
-              | VarExpr of string (* becomes symentry ref *)
-              | NotExpr of expr
-              | BoolExpr of boolop * expr * expr
-              | CompExpr of relop * expr * expr
-              | ArithExpr of arithop * expr * expr
-              | IfExpr of expr * expr * expr
-              | FunCallExpr of string * (expr list)
-
+(** To give every expr a type accessible with #typ *)
+datatype etree = ConstInt of int
+               | ConstDouble of real
+               | ConstBool of bool
+               | VarExpr of string (* later: symentry ref? *)
+               | NotExpr of expr
+               | BoolExpr of boolop * expr * expr
+               | CompExpr of relop * expr * expr
+               | ArithExpr of arithop * expr * expr
+               | IfExpr of expr * expr * expr
+               | FunCallExpr of string * expr list (* {fname: string, args: (expr list)} *)
+withtype expr = {etree: etree, typ: valtype}
+     
 (** for now, only statements can have position info--good compromise *)
 datatype stmt = AssignStmt of string * expr (* Symentry ref here too?
                                              * lvalue type? *)
