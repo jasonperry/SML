@@ -8,6 +8,7 @@ datatype checkExprResult = T of expr (* Stitch 'em like a monad? *)
 
 (* should check decls and types in different fns? *)
 
+(* exception InternalErr of string (* for things that shouldn't happen *) *)
 
 (*** SYMBOL TABLE FUNCTIONS ***)
 
@@ -33,7 +34,8 @@ fun intersect_syms l1 [] = []
     else (intersect_syms es l2)
 
 (** Assign a type to an expression. Take expr and return expr, msgs pair *)
-fun typeexpr (decls: symtable * ftable) {etree=ConstInt i, typ=_} =
+fun typeexpr (decls: symtable * ftable)
+             {etree=ConstInt i, typ=_} : expr * string list =
     ({etree=ConstInt i, typ=FmInt}, [])
   | typeexpr _ {etree=ConstDouble d, typ=_} =
     ({etree=ConstDouble d, typ=FmDouble}, [])
@@ -44,93 +46,111 @@ fun typeexpr (decls: symtable * ftable) {etree=ConstInt i, typ=_} =
      of SOME entry => ({etree=VarExpr var, typ=(#vtype entry)}, [])
      |  NONE => (e, ["Undefined variable: " ^ var]) )
   | typeexpr decls {etree=NotExpr e1, typ=_} = (
-      case typeexpr decls e1
-       of ({etree=e, typ=Untyped}, errs) =>
-          ({etree=NotExpr e, typ=Untyped}, errs) (* propagate untypedness *)
-        | ({etree=e, typ=FmBool}, msgs) =>
-          ({etree=NotExpr e, typ=FmBool}, msgs)
-        | ({etree=e, typ=t1}, msgs) =>
-          ({etree=NotExpr e, typ=Untyped},
-           msgs @ ["Non-boolean type :" ^ (typestr t1)
-                   ^ "in 'not' expression"]) )
+      let val (res, msg1) = typeexpr decls e1
+          val typ = if #typ res = Untyped orelse #typ res <> FmBool
+                    then Untyped else FmBool
+          val msgs = (if #typ res <> FmBool
+                      then ["Non-boolean type :" ^ (typestr (#typ res))
+                            ^ "in 'not' expression"]
+                      else [])
+                     @ msg1
+      in ({etree=NotExpr e1, typ=typ}, msgs)
+      end )
   | typeexpr decls {etree=BoolExpr (oper, e1, e2), typ=_} = (
-    case (typeexpr decls e1, typeexpr decls e2)
-     of ( (ee1 as {etree=_, typ=Untyped}, errs1), (ee2, msgs2) ) =>
-        ({etree=BoolExpr (oper, ee1, ee2), typ=Untyped}, errs1 @ msgs2)
-      | ( (ee1, msgs1), (ee2 as {etree=ee2, typ=Untyped}, errs2) ) =>
-        ({etree=BoolExpr (oper, ee1, ee2), typ=Untyped}, msgs1 @ errs2)
-      | ( (ee1 as {etree=_, typ=FmBool}, msgs1),
-          (ee2 as {etree=_, typ=FmBool}, msgs2) ) =>
-        ({etree=BoolExpr (oper, ee1, ee2), typ=FmBool} msgs1 @ msgs2)
-      | (T o1, T o2) => (* stopping here. boilerplate! *)
-        B ["Non-boolean type : (" ^ (typestr o1) ^ "," ^
-           (typestr o2) ^ ") in Boolean expression"] )
-  | typeexpr decls (CompExpr (oper, e1, e2)) = (
-    case (typeexpr decls e1, typeexpr decls e2) 
-     of (B err1, B err2) => B (err1 @ err2)
-      | (B err1, T _) => B err1
-      | (T _, B err2) => B err2
-      | (T t1, T t2) => 
-        if t1 <> t2 
-        then B ["Different types in comparison: (" ^
-                (typestr t1) ^ ", " ^ (typestr t2) ^ ")"]
-        else (if (oper = gt orelse oper = ge orelse oper = lt
-                  orelse oper = le) andalso
-                 (t1 <> FmInt andalso t1 <> FmDouble)
-              then B ["Ordered comparison of non-ordered type: " ^ typestr t1]
-              else T FmBool) )
-  | typeexpr decls (ArithExpr (oper, e1, e2)) = (
-    case (typeexpr decls e1, typeexpr decls e2) 
-     of (B err1, B err2) => B (err1 @ err2)
-      | (B err1, T _) => B err1
-      | (T _, B err2) => B err2
-      | (T FmInt, T FmInt) => T FmInt
-      | (T FmDouble, T FmDouble) => T FmDouble
-      | (T t1, T t2) =>
-        if t1 <> t2
-        then B ["Incompatible types in arithmetic expr: (" ^ 
-                (typestr t1) ^ ", " ^ (typestr t2) ^ ")"]
-        else B ["Non-numeric type in expression: " ^ (typestr t1)] )
-  | typeexpr decls (IfExpr (ifexp, thenexp, elsexp)) = (
-    case typeexpr decls ifexp (* Good candidate for monadization *)
-     of B err => B err
-     |  T iftype => 
-        if iftype <> FmBool 
-        then B ["Non-boolean type for test expression: "
-                ^ typestr iftype]
-        else (case typeexpr decls thenexp 
-               of B err => B err
-                | T thentype => 
-                  (case typeexpr decls elsexp
-                    of B err => B err
-                     | T elstype => 
-                       if thentype <> elstype
-                       then B ["Non-matching types ("
-                               ^ (typestr thentype) ^ ", "
-                               ^ (typestr elstype) ^ ") for then/else"]
-                       else T thentype) ) )
-  | typeexpr (decls as (vsyms, fdecls)) (FunCallExpr (fname, fnargs)) = (
-      case flookup fdecls fname 
-       of NONE => B ["Unrecognized function name: " ^ fname]
-       |  SOME {fname, argdecls, rettype} =>
-          (* List of errors in matching, empty if OK *)
-          let fun matchargs [] [] = [] 
-                | matchargs (p::ps) [] = ["Not enough arguments to " ^ fname]
-                | matchargs [] (p::ps) = ["Too many arguments to " ^ fname]
-                | matchargs ({name, vtype, sclass}::ps) (arg::args) = 
-                  case typeexpr decls arg
-                   of B errs => errs @ (matchargs ps args) (* Keep going *)
-                    | T atype => if atype = vtype
-                                 then matchargs ps args
-                                 else "Non-matching argument types: " ^ 
-                                      (typestr vtype) ^ ", " ^ 
-                                      (typestr atype) :: (matchargs ps args)
-          in
-              case matchargs argdecls fnargs
-               of [] => T rettype
-                | errs => B errs
-          end )
-
+      let val ((res1, msg1),(res2, msg2)) =
+              (typeexpr decls e1, typeexpr decls e2)
+          val typ = if #typ res1 = Untyped
+                       orelse #typ res2 = Untyped
+                       orelse #typ res1 <> FmBool
+                       orelse #typ res2 <> FmBool
+                    then Untyped else FmBool
+          val msgs = (if #typ res1 <> FmBool
+                      then ["Non-boolean type : (" ^ (typestr (#typ res1))
+                            ^ ") in Boolean expression"]
+                      else [])
+                     @
+                     (if #typ res2 <> FmBool
+                      then ["Non-boolean type : (" ^ typestr (#typ res2)
+                            ^ ") in Boolean expression"]
+                      else [])
+                     @ msg1 @ msg2
+      in ({etree=BoolExpr (oper, e1, e1), typ=typ}, msgs)
+      end )
+  | typeexpr decls {etree=CompExpr (oper, e1, e2), typ=_} = (
+      let val (({etree=_, typ=t1}, msg1), ({etree=_, typ=t2}, msg2)) =
+              (typeexpr decls e1, typeexpr decls e2)
+          val (typ,newmsg) =
+              if t1 = Untyped orelse t2 = Untyped then (Untyped, "")
+              else if t1 <> t2
+              then (Untyped, "Different types in comparison: ("
+                             ^ (typestr t1) ^ ", " ^ (typestr t2) ^ ")")
+              else if (oper = Gt orelse oper = Ge orelse oper = Lt
+                       orelse oper = Le)
+                      andalso (t1 <> FmInt andalso t1 <> FmDouble)
+              then (Untyped, "Ordered comparison of non-ordered type: "
+                             ^ (typestr t1))
+              else (FmBool, "")
+      in ({etree=CompExpr (oper, e1, e2), typ=typ}, newmsg::msg1 @ msg2)
+      end )
+  | typeexpr decls {etree=ArithExpr (oper, e1, e2), typ=_} = (
+      let val (({etree=_, typ=t1}, msg1), ({etree=_, typ=t2}, msg2)) =
+              (typeexpr decls e1, typeexpr decls e2)
+          val (typ,newmsg) =
+              if t1 = Untyped orelse t2 = Untyped then (Untyped, "")
+              else if t1 <> t2
+              then (Untyped, "Incompatible types in arithmetic expr: (" ^ 
+                             (typestr t1) ^ ", " ^ (typestr t2) ^ ")")
+              else if t1 <> FmInt andalso t1 <> FmDouble
+              then (Untyped,
+                    "Non-numeric type in expression: " ^ (typestr t1))
+              else (t1, "")
+      in ({etree=ArithExpr (oper, e1, e2), typ=typ}, newmsg::msg1 @ msg2)
+      end )
+  | typeexpr decls {etree=IfExpr (ifexp, thenexp, elsexp), typ=_} = (
+      let val ({etree=_, typ=iftype}, msg1) = typeexpr decls ifexp
+          val ({etree=_, typ=thentype}, msg2) = typeexpr decls thenexp
+          val ({etree=_, typ=elstype}, msg3) = typeexpr decls elsexp
+          val (typ, newmsg) =
+              if iftype = Untyped orelse thentype = Untyped
+                      orelse elstype = Untyped
+              then (Untyped, "") (* Just pass existing messages *)
+              else if iftype <> FmBool
+              then (Untyped, "Non-boolean type for test expression: "
+                             ^ typestr iftype)
+              else if thentype <> elstype (* One-error-at-a-time approach *)
+              then (Untyped, "Non-matching types ("
+                             ^ (typestr thentype) ^ ", "
+                             ^ (typestr elstype) ^ ") for then/else")
+              else (thentype, "")
+      in
+          ({etree = IfExpr (ifexp, thenexp, elsexp), typ=typ},
+           newmsg::msg1 @ msg2 @ msg3)
+      end )
+  | typeexpr (decls as (vsyms, fdecls)) {etree=FunCallExpr (fname, fnargs),
+                                         typ=_} = (
+      let fun matchargs [] [] = [] 
+            | matchargs (p::ps) [] = ["Not enough arguments to " ^ fname]
+            | matchargs [] (p::ps) = ["Too many arguments to " ^ fname]
+            | matchargs ({name, vtype, sclass}::ps) (arg::args) = 
+              case typeexpr decls arg
+               of ({etree=_, typ=Untyped}, msgs) =>
+                  msgs @ (matchargs ps args) (* Keep going *)
+                | ({etree=_, typ=atype}, msgs) => if atype = vtype
+                             (* discarding msgs if typechecks *)
+                             then matchargs ps args
+                             else "Non-matching argument types: "  
+                                  ^ (typestr vtype) ^ ", " 
+                                  ^ (typestr atype) :: (matchargs ps args)
+          val (typ, msgs) =
+              case flookup fdecls fname 
+               of NONE => (Untyped, ["Unrecognized function name: " ^ fname])
+               |  SOME {fname, argdecls, rettype} =>
+                  case matchargs argdecls fnargs
+                  (* issue: testing success based on no msgs (see above) *)
+                   of [] => (rettype, []) 
+                    | errs => (Untyped, errs)
+      in ({etree=FunCallExpr (fname, fnargs), typ=typ}, msgs)
+      end )
                     
 (** Check that all statements in a list are reachable. *) 
 fun checkreachable [] = []
@@ -161,77 +181,114 @@ fun checkbreak [] = []
 (* Only take most local matching name. If type doesn't match, then error. *)
 (* vsyms has both local and global symbols *)
 fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
-  case vlookup vsyms var 
-   of SOME entry => ( 
-       case typeexpr (vsyms @ adecls, fdecls) expr of
-           B errs => errs
-         | T etype => if etype <> (#vtype entry)
-                      then ["Assignment type mismatch: "
-                            ^ (typestr (#vtype entry)) ^ 
-                            ", " ^ (typestr etype)]
-                      else [])
-    | NONE => (case vlookup adecls var
-                of NONE => ["Assignment to undefined variable: " ^ var]
-                 | SOME _ => ["Assignment to argument " ^
-                              var ^ " not allowed"]))
-  | checkstmt vsyms adecls fdecls (IfStmt (cond, thenblock,
-                                           elsblock)) = (
-    case typeexpr (vsyms @ adecls, fdecls) cond of
-        B errs => errs
-        (* Inner block: outer variables become 'globals' *)
-      | T FmBool => (checkblock vsyms adecls fdecls thenblock) @
-                    (case elsblock of SOME sblock => 
-                                      checkblock vsyms adecls fdecls sblock
-                                      | NONE => []) 
-      | T _  => ["Non-Boolean condition in if statement"])
-  | checkstmt vsyms argsyms fdecls (WhileStmt (cond, thenblock)) = (
-        (case typeexpr (vsyms @ argsyms, fdecls) cond of
-             B errs => errs
-           (* Inner block: outer variables become 'globals' *)
-           | T FmBool => []
-           | T t  => ["Non-Boolean condition in while statement"
-                      ^ (typestr t)])
-        @ checkblock vsyms argsyms fdecls thenblock )
+    let val (checkedexpr as {etree=_, typ=etype}, msgs) =
+            typeexpr (vsyms @ adecls, fdecls) expr
+        val errmsg = 
+            case vlookup vsyms var 
+             of SOME entry => ( 
+                 if etype <> (#vtype entry)
+                 then "Assignment type mismatch: " ^ (typestr (#vtype entry))
+                      ^ ", " ^ (typestr etype)
+                 else "" )
+              | NONE => (case vlookup adecls var
+                          of NONE => "Assignment to undefined variable: "
+                                     ^ var
+                           | SOME _ => "Assignment to argument "
+                                       ^ var ^ " not allowed" )
+    in (AssignStmt (var, checkedexpr), errmsg::msgs)
+    end )
+
+  | checkstmt vsyms argsyms fdecls (IfStmt (cond, thenblock, elsblock)) = (
+      let val (checkedcond as {etree=_, typ=ctype}, msgs1) =
+              typeexpr (vsyms @ argsyms, fdecls) cond
+          val (checkedthen, msgs2) =
+              checkblock vsyms argsyms fdecls thenblock
+          val (checkedelse, msgs3) = (
+              case elsblock 
+               of SOME sblock => (* A very monadic threading operation *)
+                  let val (res, msgs) = checkblock vsyms argsyms fdecls sblock
+                  in (SOME res, msgs)
+                  end               
+                | NONE => (elsblock, []) )
+          val errmsg = if ctype <> FmBool
+                       then "Non-Boolean condition in if statement"
+                       else ""
+      in (IfStmt (checkedcond, checkedthen, checkedelse),
+          errmsg::msgs1 @ msgs2 @ msgs3)
+      end )
+
+  | checkstmt vsyms argsyms fdecls (WhileStmt (cond, bblock)) = (
+      let val (checkedcond as {etree=_, typ=ctype}, msgs1) =
+              typeexpr (vsyms @ argsyms, fdecls) cond
+          val (checkedbody, msgs2) = checkblock vsyms argsyms fdecls bblock 
+          val errmsg = if ctype <> FmBool
+                       then "Non-Boolean condition in while statement: type "
+                            ^ (typestr ctype)
+                       else ""
+      in (WhileStmt (checkedcond, checkedbody), errmsg::msgs1 @ msgs2)
+      end )
 
   | checkstmt vsyms argsyms fdecls (ForStmt (initstmt, cond, updatestmt,
-                                             sblock)) = (
-      checkstmt vsyms argsyms fdecls initstmt
-      @ (case typeexpr (vsyms @ argsyms, fdecls) cond of
-             B errs => errs
-           | T FmBool => []
-           | T t => ["Non-Boolean condition in 'for' statement: "
-                     ^ (typestr t)]) 
-      @ checkstmt vsyms argsyms fdecls updatestmt
-      @ checkblock vsyms argsyms fdecls sblock )
+                                             bblock)) = (
+      (* If I want to allow new vardecls in the initstmt, change here *)
+      let val (checkedinit, msgs1) = checkstmt vsyms argsyms fdecls initstmt
+          val (checkedcond as {etree=_, typ=ctype}, msgs2) =
+              typeexpr (vsyms @ argsyms, fdecls) cond
+          val (checkedupd, msgs3) = checkstmt vsyms argsyms fdecls updatestmt
+          val (checkedbody, msgs4) = checkblock vsyms argsyms fdecls bblock 
+          val errmsg = if ctype <> FmBool
+                       then "Non-Boolean condition in 'for' statement: "
+                            ^ (typestr ctype)
+                       else ""
+      in (ForStmt (checkedinit, checkedcond, checkedupd, checkedbody),
+          errmsg::msgs1 @ msgs2 @ msgs3 @ msgs4)
+      end )
 
   | checkstmt vsyms argsyms fdecls (PrintStmt expr) = (
-      case typeexpr (vsyms @ argsyms, fdecls) expr of
-          B errs => errs
-        | T _ => [] )  (* TODO: printable types, from a tenv? *)
+      let val (checkedexpr, msgs) = typeexpr (vsyms @ argsyms, fdecls) expr
+      in
+          (PrintStmt checkedexpr, msgs)
+      end ) (* TODO: printable types, from a tenv? *)
 
-  | checkstmt vsyms argsyms fdecls (CallStmt call) = (
-      case typeexpr (vsyms @ argsyms, fdecls) (FunCallExpr call) of
-          B errs => errs
-        | T FmUnit => []
-        | T rettype => ["Discarding return value of type "
-                        ^ (typestr rettype)])
-
+  | checkstmt vsyms argsyms fdecls (CallStmt callexpr) = (
+      (* Parser ensures it's a FunCallExpr *)
+      let val (checkedexpr as {etree=_, typ=rettype}, msgs) =
+              typeexpr (vsyms @ argsyms, fdecls) callexpr
+          val errmsg = if rettype <> FmUnit
+                       then "Discarded return value of type "
+                            ^ (typestr rettype)
+                       else ""
+      in (CallStmt checkedexpr, errmsg::msgs)
+      end )
   | checkstmt vsyms argsyms fdecls (ReturnStmt (SOME expr)) = (
-      case typeexpr (vsyms @ argsyms, fdecls) expr of
-          B errs => errs
-        | T rettype =>
-          (case vlookup argsyms "*return*" of
-               (* special entry to args table *)
-               SOME entry => (* (t, _) => *)
-               if rettype <> (#vtype entry)
-               then ["Return type '" ^ (typestr rettype)
-                     ^ "' doesn't match function type '"
-                     ^ (typestr (#vtype entry)) ^ "'"]
-               else []
-             | NONE => raise Empty (* shouldn't happen *) ))
-  | checkstmt _ _ _ (ReturnStmt NONE) = []
-  | checkstmt _ _ _ (BreakStmt {pos}) = []
+      let val (checkedexpr as {etree=_, typ=rettype}, msgs) =
+              typeexpr (vsyms @ argsyms, fdecls) expr
+          val errmsg = (
+              case vlookup argsyms "*return*" 
+                  (* special entry to args table *)
+               of SOME entry => 
+                  if rettype <> (#vtype entry)
+                  then "Returned value type '" ^ (typestr rettype)
+                       ^ "' doesn't match function type '"
+                       ^ (typestr (#vtype entry)) ^ "'"
+                  else ""
+                | NONE => raise Empty )(* if happens, bug in symtable code *)
+      in (ReturnStmt (SOME checkedexpr), errmsg::msgs)
+      end )
+  | checkstmt _ argsyms _ (ReturnStmt NONE) = (
+    let val errmsg = (
+            case vlookup argsyms "*return*" 
+             of SOME entry =>
+                if (#vtype entry) <> FmUnit
+                then "Empty return statement; expected value of type "
+                     ^ typestr (#vtype entry)
+                else ""
+             | NONE => raise Empty )(* if happens, bug in symtable code *)
+    in (ReturnStmt NONE, [errmsg])
+    end )
+  | checkstmt _ _ _ (BreakStmt {pos=p}) = (BreakStmt {pos=p}, [])
 
+(* start here *)
 and checkblock (gsyms: symtable) args (fsyms: ftable) (lsyms, stmts) =
     List.concat (map (checkstmt (gsyms @ lsyms) args fsyms) stmts)
     @

@@ -37,7 +37,7 @@ datatype etree = ConstInt of int
                | IfExpr of expr * expr * expr
                | FunCallExpr of string * expr list (* {fname: string, args: (expr list)} *)
 withtype expr = {etree: etree, typ: valtype}
-     
+
 (** for now, only statements can have position info--good compromise *)
 datatype stmt = AssignStmt of string * expr (* Symentry ref here too?
                                              * lvalue type? *)
@@ -45,7 +45,7 @@ datatype stmt = AssignStmt of string * expr (* Symentry ref here too?
               | WhileStmt of expr * sblock
               | ForStmt of stmt * expr * stmt * sblock
               | PrintStmt of expr
-              | CallStmt of string * expr list (* ftable ref? *)
+              | CallStmt of expr (* string * expr list *) (* ftable ref? *)
               | ReturnStmt of expr option
               | BreakStmt of {pos: srcpos}
 withtype sblock = symtable * stmt list
