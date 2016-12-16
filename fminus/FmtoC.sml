@@ -38,24 +38,26 @@ fun printdecl {name, vtype, sclass} =
     | _ => raise Unsupported ("Unsupported type: " ^ (typestr vtype))
 
 (** Print expression in C code. *)
-fun printexpr (ConstExpr n) = Int.toString n
-  | printexpr (ConstBool b) = if b then "1" else "0"
-  | printexpr (ConstDouble d) = Real.toString d
-  | printexpr (VarExpr v) = v
-  | printexpr (NotExpr expr) = "!(" ^ printexpr expr ^ ")"
-  | printexpr (BoolExpr (And, e1, e2)) =
-    printexpr e1 ^ " && " ^ printexpr e2
-  | printexpr (BoolExpr (Or, e1, e2)) =
-    printexpr e1 ^ " || " ^ printexpr e2
-  | printexpr (CompExpr (oper, e1, e2)) =
-    printexpr e1 ^ " " ^ (relopstring oper) ^ " " ^ printexpr e2
-  | printexpr (ArithExpr (oper, e1, e2)) =
-    printexpr e1 ^ " " ^ (arithopstring oper) ^ " " ^ printexpr e2
-  | printexpr (IfExpr (ifexpr, thenexpr, elseexpr)) =
-    printexpr ifexpr ^ " ? " ^ printexpr thenexpr ^ " : "
-    ^ printexpr elseexpr
-  | printexpr (FunCallExpr (fname, elist)) =
-    fname ^ "(" ^ joinwith ", " (map printexpr elist) ^ ")"
+fun printexpr expr =
+  case (#etree expr)
+   of ConstInt n => Int.toString n
+    | ConstBool b => if b then "1" else "0"
+    | ConstDouble d => Real.toString d
+    | VarExpr v => v
+    | NotExpr expr => "!(" ^ printexpr expr ^ ")"
+    | BoolExpr (And, e1, e2) =>
+      printexpr e1 ^ " && " ^ printexpr e2
+    | BoolExpr (Or, e1, e2) =>
+      printexpr e1 ^ " || " ^ printexpr e2
+    | CompExpr (oper, e1, e2) =>
+      printexpr e1 ^ " " ^ (relopstring oper) ^ " " ^ printexpr e2
+    | ArithExpr (oper, e1, e2) =>
+      printexpr e1 ^ " " ^ (arithopstring oper) ^ " " ^ printexpr e2
+    | IfExpr (ifexpr, thenexpr, elseexpr) =>
+      printexpr ifexpr ^ " ? " ^ printexpr thenexpr ^ " : "
+      ^ printexpr elseexpr
+    | FunCallExpr (fname, elist) =>
+      fname ^ "(" ^ joinwith ", " (map printexpr elist) ^ ")"
 
 fun printstmt (AssignStmt (var, expr)) = var ^ " = " ^ printexpr expr ^ ";"
   | printstmt (IfStmt (cond, thenblk, elseopt)) =
@@ -72,23 +74,19 @@ fun printstmt (AssignStmt (var, expr)) = var ^ " = " ^ printexpr expr ^ ";"
        ^ String.substring(updstr, 0, size updstr - 1)
        ^ ")" ^ printsblock forblk
     end
-  | printstmt (PrintStmt expr) = 
-      (case checkexpr expr of  (* Uses typechecker *)
-           T FmBool => "printf(\"%s\\n\", " ^ printexpr expr
-                       ^  " ? \"true\" : \"false\");"
-         | T FmInt => "printf(\"%d\\n\", " ^ printexpr expr ^ ");"
-         | T FmDouble => "printf(\"%f\\n\", " ^ printexpr expr ^ ");"
-         | T t => raise Unsupported ("Unsupported type: " ^ (typestr t))
-         | B errs => raise Unsupported ("Failed type check: "
-                                        ^ (joinwith "\n" errs)) )
-  (* | printstmt (PrintStmt expr) =
-    "printf(\"%d\\n\"," ^ printexpr expr ^ ");" *)
-  | printstmt (CallStmt (fname, elist)) =
-    fname ^ "(" ^ joinwith ", " (map printexpr elist) ^ ");"
-  | printstmt (ReturnStmt expropt) =
-    "return" ^ (if isSome expropt
-                then " " ^ printexpr (valOf expropt) ^ ";"
-                else ";")
+  | printstmt (PrintStmt expr) = (
+      case (#typ expr) of 
+          FmBool => "printf(\"%s\\n\", " ^ printexpr expr
+                    ^  " ? \"true\" : \"false\");"
+        | FmInt => "printf(\"%d\\n\", " ^ printexpr expr ^ ");"
+        | FmDouble => "printf(\"%f\\n\", " ^ printexpr expr ^ ");"
+        | t => raise Unsupported ("Unsupported type: " ^ (typestr t)) )
+  | printstmt (CallStmt {etree=FunCallExpr (fname, arglist), typ=_}) =
+    fname ^ "(" ^ joinwith ", " (map printexpr arglist) ^ ");"
+  | printstmt (CallStmt _) = raise Empty (* shouldn't happen *) 
+  | printstmt (ReturnStmt NONE) = "return;"
+  | printstmt (ReturnStmt (SOME retexpr)) =
+               "return " ^ printexpr retexpr ^ ";"
   | printstmt (BreakStmt {pos}) = "break;"
 
 and printsblock (decls, stmts) = "{\n" ^
@@ -105,6 +103,7 @@ fun printproc ({fname, argdecls, rettype}, body) =
   ^ fname ^ "(" ^ joinwith ", " (map printdecl argdecls) ^ ")"
   ^ printsblock body
 
+(* TODO: open UtilJP and get this function from there. *)
 fun mapi f lst =
   let fun mapi' n [] = []
         | mapi' n (e::es) = (f (e,n))::(mapi' (n+1) es)
@@ -115,8 +114,19 @@ fun printprog {ddecls, gdecls, fdefns, main} =
   (* Turn ddecls into command-line args *)
   let val arginits =
           concat (mapi (fn (entry:symentry, i) =>
-                           "int " ^ #name entry
-                           ^ " = atoi(argv[" ^ Int.toString (i+1)
+                           (case (#vtype entry)
+                             of FmInt => "int " ^ #name entry
+                                         ^ " = atoi(argv["
+                                         ^ Int.toString (i+1)
+                              | FmBool => "int " ^ #name entry
+                                         ^ " = atoi(argv["
+                                         ^ Int.toString (i+1)
+                              | FmDouble => "double " ^ #name entry
+                                            ^ " = atof(argv["
+                                            ^ Int.toString(i+1) 
+                              | t => raise Unsupported
+                                           ("Unsupported input type " ^
+                                            typestr t) )
                            ^ "]);\n") ddecls)
   in
       "#include <stdbool.h>\n#include<stdlib.h>\n#include <stdio.h>\n\n"

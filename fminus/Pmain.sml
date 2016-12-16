@@ -49,10 +49,12 @@ fun parse file =
         val lexbuf = createLexerStream is
 	val pgm    = parseReport file is lexbuf
 	             handle exn => (BasicIO.close_in is; raise exn)
-        val errs   = Fmtypes.checkprogram pgm
+        val (checkedpgm, errs)   = Fmtypes.checkprogram pgm
     in 
         BasicIO.close_in is;
-	(pgm, errs, if errs = [] then FmtoC.printprog pgm else "")
+	(checkedpgm, errs, if errs = []
+                           then FmtoC.printprog checkedpgm else "")
+         (* FmtoC.printprog checkedpgm) *)
     end
 
 fun main () =

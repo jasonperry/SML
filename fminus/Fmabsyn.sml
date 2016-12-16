@@ -35,7 +35,7 @@ datatype etree = ConstInt of int
                | CompExpr of relop * expr * expr
                | ArithExpr of arithop * expr * expr
                | IfExpr of expr * expr * expr
-               | FunCallExpr of string * expr list (* {fname: string, args: (expr list)} *)
+               | FunCallExpr of string * expr list 
 withtype expr = {etree: etree, typ: valtype}
 
 (** for now, only statements can have position info--good compromise *)
