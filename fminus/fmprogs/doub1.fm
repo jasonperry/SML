@@ -1,0 +1,10 @@
+
+indata x: double;
+
+proc mult(x: double, y: double) -> double {
+    return x * y;
+}
+
+main {
+    print mult(x, x);
+}
