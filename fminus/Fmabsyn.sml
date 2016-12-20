@@ -12,7 +12,7 @@ fun typestr FmInt = "int"
 
 datatype storeclass = Indata | Outdata | Global | Local | Arg
 
-type srcpos = int
+type srcpos = Location.Location
 
 (* If I don't keep source locations here, how can I typecheck 'later'? *)
 
@@ -39,16 +39,18 @@ datatype etree = ConstInt of int
 withtype expr = {etree: etree, typ: valtype}
 
 (** for now, only statements can have position info--good compromise *)
-datatype stmt = AssignStmt of string * expr (* Symentry ref here too?
+datatype stree = AssignStmt of string * expr (* Symentry ref here too?
                                              * lvalue type? *)
-              | IfStmt of expr * sblock * sblock option
-              | WhileStmt of expr * sblock
-              | ForStmt of stmt * expr * stmt * sblock
-              | PrintStmt of expr
-              | CallStmt of expr (* string * expr list *) (* ftable ref? *)
-              | ReturnStmt of expr option
-              | BreakStmt of {pos: srcpos}
-withtype sblock = symtable * stmt list
+               | IfStmt of expr * sblock * sblock option
+               | WhileStmt of expr * sblock
+               | ForStmt of stmt * expr * stmt * sblock
+               | PrintStmt of expr
+               | CallStmt of expr (* string * expr list *) (* ftable ref? *)
+               | ReturnStmt of expr option
+               | BreakStmt
+withtype stmt = {stree: stree, pos: srcpos}
+     and sblock = symtable * {stree: stree, pos: srcpos} list
+
 
 type fdecl = { fname: string, 
                argdecls: symentry list,

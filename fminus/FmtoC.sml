@@ -59,35 +59,37 @@ fun printexpr expr =
     | FunCallExpr (fname, elist) =>
       fname ^ "(" ^ joinwith ", " (map printexpr elist) ^ ")"
 
-fun printstmt (AssignStmt (var, expr)) = var ^ " = " ^ printexpr expr ^ ";"
-  | printstmt (IfStmt (cond, thenblk, elseopt)) =
-    "if (" ^ printexpr cond ^ ")" ^ printsblock thenblk 
-    ^ (if isSome elseopt
-       then printsblock (valOf elseopt)
-       else "")
-  | printstmt (WhileStmt (cond, whileblk)) =
-    "while (" ^ printexpr cond ^ ")" ^ printsblock whileblk
-  | printstmt (ForStmt (init, cond, update, forblk)) =
-    let val updstr = printstmt update
-    in "for (" ^ printstmt init ^ printexpr cond ^ ";"
-       (* shave off the semicolon *)
-       ^ String.substring(updstr, 0, size updstr - 1)
-       ^ ")" ^ printsblock forblk
-    end
-  | printstmt (PrintStmt expr) = (
+fun printstmt {stree, pos} =
+  case stree (* TODO: remove extra parens. *)
+   of AssignStmt (var, expr) => var ^ " = " ^ printexpr expr ^ ";"
+    | IfStmt (cond, thenblk, elseopt) =>
+      "if (" ^ printexpr cond ^ ")" ^ printsblock thenblk 
+      ^ (if isSome elseopt
+         then printsblock (valOf elseopt)
+         else "")
+    | WhileStmt (cond, whileblk) =>
+      "while (" ^ printexpr cond ^ ")" ^ printsblock whileblk
+    | ForStmt (init, cond, update, forblk) =>
+      let val updstr = printstmt update
+      in "for (" ^ printstmt init ^ printexpr cond ^ ";"
+         (* shave off the semicolon *)
+         ^ String.substring(updstr, 0, size updstr - 1)
+         ^ ")" ^ printsblock forblk
+      end
+    | PrintStmt expr => (
       case (#typ expr) of 
           FmBool => "printf(\"%s\\n\", " ^ printexpr expr
                     ^  " ? \"true\" : \"false\");"
         | FmInt => "printf(\"%d\\n\", " ^ printexpr expr ^ ");"
         | FmDouble => "printf(\"%f\\n\", " ^ printexpr expr ^ ");"
         | t => raise Unsupported ("Unsupported type: " ^ (typestr t)) )
-  | printstmt (CallStmt {etree=FunCallExpr (fname, arglist), typ=_}) =
-    fname ^ "(" ^ joinwith ", " (map printexpr arglist) ^ ");"
-  | printstmt (CallStmt _) = raise Empty (* shouldn't happen *) 
-  | printstmt (ReturnStmt NONE) = "return;"
-  | printstmt (ReturnStmt (SOME retexpr)) =
-               "return " ^ printexpr retexpr ^ ";"
-  | printstmt (BreakStmt {pos}) = "break;"
+    | CallStmt {etree=FunCallExpr (fname, arglist), typ=_} =>
+      fname ^ "(" ^ joinwith ", " (map printexpr arglist) ^ ");"
+    | CallStmt _ => raise Empty (* shouldn't happen *) 
+    | ReturnStmt NONE => "return;"
+    | ReturnStmt (SOME retexpr) =>
+      "return " ^ printexpr retexpr ^ ";"
+    | BreakStmt => "break;"
 
 and printsblock (decls, stmts) = "{\n" ^
   termwith ";\n" (map printdecl decls) ^

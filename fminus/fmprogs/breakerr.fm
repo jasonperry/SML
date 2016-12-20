@@ -1,0 +1,6 @@
+main {
+    var i : bool;
+    i := 3 * 5;
+    break;
+    print i;
+}

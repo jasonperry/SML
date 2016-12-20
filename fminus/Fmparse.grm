@@ -28,7 +28,7 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %token INDATA OUTDATA
 %token AND OR NOT
 %token TRUE FALSE
-%token <Fmabsyn.srcpos> BREAK
+%token BREAK
 %token ELSE FOR IF IMPORT MAIN PROC PRINT RETURN THEN VAR WHILE
 %token LBRACE RBRACE LPAR RPAR LSQUARE RSQUARE
 %token EOF
@@ -156,31 +156,43 @@ BlockStmt:
   | IfStmt                              { $1 }
 ;
 AssnStmt:
-    NAME ASSIGN Expr                    { AssignStmt ($1, $3) }
+    NAME ASSIGN Expr                    { {stree=AssignStmt ($1, $3),
+                                           pos=Location.getCurrentLocation()} }
 ;
 ForStmt: 
-    FOR LPAR AssnStmt SEMI Expr SEMI AssnStmt RPAR Sblock   { ForStmt ($3, $5, $7, $9) }
+    FOR LPAR AssnStmt SEMI Expr SEMI AssnStmt RPAR Sblock
+                                        { {stree=ForStmt ($3, $5, $7, $9),
+                                           pos=Location.getCurrentLocation()} }
 ;
 WhileStmt:
-    WHILE LPAR Expr RPAR Sblock         { WhileStmt ($3, $5) }
+    WHILE LPAR Expr RPAR Sblock         { {stree=WhileStmt ($3, $5),
+                                           pos=Location.getCurrentLocation()} }
 ;
 IfStmt:
-    IF LPAR Expr RPAR Sblock                   { IfStmt ($3, $5, NONE) }
-  | IF LPAR Expr RPAR Sblock ELSE Sblock       { IfStmt ($3, $5, SOME $7) }
+    IF LPAR Expr RPAR Sblock             { {stree=IfStmt ($3, $5, NONE),
+                                            pos=Location.getCurrentLocation()} }
+  | IF LPAR Expr RPAR Sblock ELSE Sblock { {stree=IfStmt ($3, $5, SOME $7),
+                                            pos=Location.getCurrentLocation()} }
 ;
 PrintStmt:
-    PRINT Expr                          { PrintStmt $2 }
+    PRINT Expr                          { {stree=PrintStmt $2,
+                                           pos=Location.getCurrentLocation()} }
 ;
 CallStmt:
-    NAME LPAR Args RPAR                 { CallStmt {etree=FunCallExpr ($1, $3),
-                                                    typ=Untyped} }
+    NAME LPAR Args RPAR                 { {stree=CallStmt
+                                            {etree=FunCallExpr ($1, $3),
+                                             typ=Untyped},
+                                           pos=Location.getCurrentLocation()} }
 ;
 ReturnStmt:
-    RETURN Expr                         { ReturnStmt (SOME $2) }
-  | RETURN                              { ReturnStmt NONE }   
+    RETURN Expr                         { {stree=ReturnStmt (SOME $2),
+                                           pos=Location.getCurrentLocation()} }
+  | RETURN                              { {stree=ReturnStmt NONE,
+                                           pos=Location.getCurrentLocation()} }
 ;
 BreakStmt:
-    BREAK                               { BreakStmt {pos=$1} }
+    BREAK                               { {stree=BreakStmt,
+                                           pos=Location.getCurrentLocation()} }
 ;
 // Encode expression type at syntax level?
 Args: 

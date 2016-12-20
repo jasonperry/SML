@@ -39,7 +39,7 @@
        | "true"         => TRUE
        | "false"        => FALSE
        | "return"       => RETURN
-       | "break"        => BREAK pos
+       | "break"        => BREAK
        | "print"        => PRINT
        | "import"       => IMPORT
        | "main"         => MAIN
@@ -61,7 +61,8 @@ rule Token = parse (* TODO: strings *)
                                NONE   => lexerError lexbuf "internal error"
                              | SOME i => INT i
                         }
-  | [`a`-`z``A`-`Z`][`a`-`z``A`-`Z``0`-`9`]*
+    (*  | [`a`-`z``A`-`Z`][`a`-`z``A`-`Z``0`-`9`]* *) (* yay, hyphens! *)
+  | [`a`-`z`]([`-``a`-`z``0`-`9`]*[`a`-`z``0`-`9`])?
                         { keyword (getLexeme lexbuf) (!lineno) }
   | "(*"                { commentStart := getLexemeStart lexbuf;
                           commentDepth := 1; 

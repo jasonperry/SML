@@ -33,7 +33,7 @@ fun intersect_syms l1 [] = []
     then entry::(intersect_syms es l2)
     else (intersect_syms es l2)
 
-(** Assign a type to an expression. Take expr and return expr, msgs pair *)
+(** Assign a type to an expression. Take expr and return (expr, msgs) *)
 fun typeexpr (decls: symtable * ftable)
              {etree=ConstInt i, typ=_} : expr * string list =
     ({etree=ConstInt i, typ=FmInt}, [])
@@ -151,23 +151,23 @@ fun typeexpr (decls: symtable * ftable)
                     | errs => (Untyped, errs)
       in ({etree=FunCallExpr (fname, fnargs), typ=typ}, msgs)
       end )
-                    
+
 (** Check that all statements in a list are reachable. *) 
-fun checkreachable [] = []
+fun checkreachable ([]: stmt list) = []
   | checkreachable (stmt::[]) = [] 
-  | checkreachable (stmt1::stmt2::stmts) =
-    case stmt1 of
+  | checkreachable ({stree, pos=Location.Loc (l,r)}::stmt2::stmts) = 
+    case stree of
         ReturnStmt _ => ["Unreachable code after return"]
-      | BreakStmt {pos} => ["Line " ^ Int.toString pos
-                          ^ ": Unreachable code after break"] 
+      | BreakStmt => ["Line " ^ Int.toString l ^ "," ^ Int.toString r
+                      ^ ": Unreachable code after break"] 
       | _ => checkreachable (stmt2::stmts)
 
 (** Check that a break is inside a loop *)
 fun checkbreak [] = []
-  | checkbreak (stmt::stmts) =
-    case stmt of
-        BreakStmt {pos} => ["Line " ^ Int.toString pos
-                            ^ ": Break statement used outside of loop"]
+  | checkbreak ({stree, pos=Location.Loc (l,r)}::stmts) =
+    case stree of
+        BreakStmt => ["Line " ^ Int.toString l ^ "," ^ Int.toString r
+                      ^ ": Break statement used outside of loop"]
       | IfStmt (_, (_, thenstmts), SOME (_, elsestmts)) =>
         (checkbreak thenstmts)
         @ (checkbreak elsestmts)
@@ -180,7 +180,8 @@ fun checkbreak [] = []
 (** Typecheck single statement, returning list of errors *)
 (* Only take most local matching name. If type doesn't match, then error. *)
 (* vsyms has both local and global symbols *)
-fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
+fun checkstmt (vsyms: symtable) adecls fdecls
+              {stree=AssignStmt (var, expr), pos} = (
     let val (checkedexpr as {etree=_, typ=etype}, msgs) =
             typeexpr (vsyms @ adecls, fdecls) expr
         val newerrs = 
@@ -195,10 +196,11 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                                       ^ var]
                            | SOME _ => ["Assignment to argument "
                                         ^ var ^ " not allowed"] )
-    in (AssignStmt (var, checkedexpr), newerrs @ msgs)
+    in ({stree=AssignStmt (var, checkedexpr), pos=pos}, newerrs @ msgs)
     end )
 
-  | checkstmt vsyms argsyms fdecls (IfStmt (cond, thenblock, elsblock)) = (
+  | checkstmt vsyms argsyms fdecls 
+              {stree=IfStmt (cond, thenblock, elsblock), pos} = (
       let val (checkedcond as {etree=_, typ=ctype}, msgs1) =
               typeexpr (vsyms @ argsyms, fdecls) cond
           val (checkedthen, msgs2) =
@@ -213,11 +215,12 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
           val newerrs = if ctype <> FmBool
                        then ["Non-Boolean condition in if statement"]
                        else []
-      in (IfStmt (checkedcond, checkedthen, checkedelse),
+      in ({stree=IfStmt (checkedcond, checkedthen, checkedelse), pos=pos},
           newerrs @ msgs1 @ msgs2 @ msgs3)
       end )
 
-  | checkstmt vsyms argsyms fdecls (WhileStmt (cond, bblock)) = (
+  | checkstmt vsyms argsyms fdecls
+              {stree=WhileStmt (cond, bblock), pos} = (
       let val (checkedcond as {etree=_, typ=ctype}, msgs1) =
               typeexpr (vsyms @ argsyms, fdecls) cond
           val (checkedbody, msgs2) = checkblock vsyms argsyms fdecls bblock 
@@ -225,11 +228,12 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                        then ["Non-Boolean condition in while statement: type "
                              ^ (typestr ctype)]
                        else []
-      in (WhileStmt (checkedcond, checkedbody), newerrs @ msgs1 @ msgs2)
+      in ({stree=WhileStmt (checkedcond, checkedbody), pos=pos},
+          newerrs @ msgs1 @ msgs2)
       end )
 
-  | checkstmt vsyms argsyms fdecls (ForStmt (initstmt, cond, updatestmt,
-                                             bblock)) = (
+  | checkstmt vsyms argsyms fdecls
+              {stree=ForStmt (initstmt, cond, updatestmt, bblock), pos} = (
       (* If I want to allow new vardecls in the initstmt, change here *)
       let val (checkedinit, msgs1) = checkstmt vsyms argsyms fdecls initstmt
           val (checkedcond as {etree=_, typ=ctype}, msgs2) =
@@ -240,17 +244,19 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                        then ["Non-Boolean condition in 'for' statement: "
                              ^ (typestr ctype)]
                        else []
-      in (ForStmt (checkedinit, checkedcond, checkedupd, checkedbody),
-          newerrs @ msgs1 @ msgs2 @ msgs3 @ msgs4)
+      in ({stree=ForStmt (checkedinit, checkedcond, checkedupd, checkedbody),
+           pos=pos}, newerrs @ msgs1 @ msgs2 @ msgs3 @ msgs4)
       end )
 
-  | checkstmt vsyms argsyms fdecls (PrintStmt expr) = (
+  | checkstmt vsyms argsyms fdecls
+              {stree=PrintStmt expr, pos} = (
       let val (checkedexpr, msgs) = typeexpr (vsyms @ argsyms, fdecls) expr
       in
-          (PrintStmt checkedexpr, msgs)
+          ({stree=PrintStmt checkedexpr, pos=pos}, msgs)
       end ) (* TODO: printable types, from a tenv? *)
 
-  | checkstmt vsyms argsyms fdecls (CallStmt callexpr) = (
+  | checkstmt vsyms argsyms fdecls
+              {stree=CallStmt callexpr, pos} = (
       (* Parser ensures it's a FunCallExpr *)
       let val (checkedexpr as {etree=_, typ=rettype}, msgs) =
               typeexpr (vsyms @ argsyms, fdecls) callexpr
@@ -258,9 +264,10 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                        then ["Discarded return value of type "
                              ^ (typestr rettype)]
                        else []
-      in (CallStmt checkedexpr, newerrs @ msgs)
+      in ({stree=CallStmt checkedexpr, pos=pos}, newerrs @ msgs)
       end )
-  | checkstmt vsyms argsyms fdecls (ReturnStmt (SOME expr)) = (
+  | checkstmt vsyms argsyms fdecls
+              {stree=ReturnStmt (SOME expr), pos} = (
       let val (checkedexpr as {etree=_, typ=rettype}, msgs) =
               typeexpr (vsyms @ argsyms, fdecls) expr
           val newerrs = (
@@ -273,9 +280,9 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                         ^ (typestr (#vtype entry)) ^ "'"]
                   else []
                 | NONE => raise Empty )(* if happens, bug in symtable code *)
-      in (ReturnStmt (SOME checkedexpr), newerrs @ msgs)
+      in ({stree=ReturnStmt (SOME checkedexpr), pos=pos}, newerrs @ msgs)
       end )
-  | checkstmt _ argsyms _ (ReturnStmt NONE) = (
+  | checkstmt _ argsyms _ {stree=ReturnStmt NONE, pos} = (
     let val newerrs = (
             case vlookup argsyms "*return*" 
              of SOME entry =>
@@ -284,9 +291,10 @@ fun checkstmt (vsyms: symtable) adecls fdecls (AssignStmt (var, expr)) = (
                       ^ typestr (#vtype entry)]
                 else []
              | NONE => raise Empty )(* if happens, bug in symtable code *)
-    in (ReturnStmt NONE, newerrs)
+    in ({stree=ReturnStmt NONE, pos=pos}, newerrs)
     end )
-  | checkstmt _ _ _ (BreakStmt {pos=p}) = (BreakStmt {pos=p}, [])
+  | checkstmt _ _ _ ({stree=BreakStmt, pos}) =
+    ({stree=BreakStmt, pos=pos}, [])
 
 (** Merge global and local symbols to check each statement in a block,
   * then check that every statement is reachable. *)
@@ -329,7 +337,7 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
                           ^ "' may be used before initialization") nones
           end
         val (errs, newinits) = (
-            case stmt of
+            case (#stree stmt) of
                 (* We could strip off types and just use a list of vars. *)
                 (* ** Assignment initializes. ** *)
                 AssignStmt (v, expr) => (* storage class doesn't matter. *)
@@ -374,7 +382,7 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
               | ReturnStmt (SOME expr) =>
                 (checkvars initedvars (usedvars expr), [])
               | ReturnStmt NONE => ([], [])
-              | BreakStmt {pos} => ([], [])
+              | BreakStmt => ([], [])
         )
     in
         (* initalized variables accumulate tail-style, errors direct-style *)
@@ -387,7 +395,7 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
 (** Check if a statement list always returns *)
 fun willreturn [] = false
   | willreturn (stmt::stmts) =
-    case stmt of
+    case (#stree stmt) of
         ReturnStmt _ => true
       | IfStmt (e, (_, thenblk), SOME (_, elseblk)) =>
         willreturn thenblk andalso willreturn elseblk
