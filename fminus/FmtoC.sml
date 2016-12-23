@@ -60,7 +60,7 @@ fun printexpr expr =
       fname ^ "(" ^ joinwith ", " (map printexpr elist) ^ ")"
 
 fun printstmt {stree, pos} =
-  case stree (* TODO: remove extra parens. *)
+  case stree
    of AssignStmt (var, expr) => var ^ " = " ^ printexpr expr ^ ";"
     | IfStmt (cond, thenblk, elseopt) =>
       "if (" ^ printexpr cond ^ ")" ^ printsblock thenblk 

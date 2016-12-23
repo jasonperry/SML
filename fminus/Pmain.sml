@@ -52,16 +52,21 @@ fun parse file =
         val (checkedpgm, errs)   = Fmtypes.checkprogram pgm
     in 
         BasicIO.close_in is;
-	(checkedpgm, errs, if errs = []
+	(checkedpgm, errs, if errs = [] (* should handle these together? *)
                            then FmtoC.printprog checkedpgm else "")
          (* FmtoC.printprog checkedpgm) *)
     end
 
 fun main () =
-  let val (pgm, errs, cstring) = parse (hd (CommandLine.arguments ()))
-  in
-      TextIO.output(TextIO.stdErr, FmtoC.termwith "\n" errs);
-      TextIO.output(TextIO.stdOut, cstring)
-  end
+  case CommandLine.arguments ()
+   of [] =>
+      TextIO.output(TextIO.stdErr, "Usage: " ^ CommandLine.name()
+                                   ^ " <source.fm>\n")
+    | arg::_ => 
+      let val (pgm, errs, cstring) = parse (hd (CommandLine.arguments ()))
+      in
+          TextIO.output(TextIO.stdErr, FmtoC.termwith "\n" errs);
+          TextIO.output(TextIO.stdOut, cstring)
+      end
 
 val _ = main ()

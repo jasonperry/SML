@@ -424,7 +424,8 @@ fun checkproc gsyms prevfdecls (top as {fname, argdecls, rettype}, sblock) =
 fun checkprogram {ddecls, gdecls, fdefns, main} =
   let val predecls = ddecls @ gdecls
       (** Accumulates list of checked function definitions and errors *)
-      fun checkaccum [] (accdefns: fdefn list) accerrs = (accdefns, rev accerrs)
+      fun checkaccum [] (accdefns: fdefn list) accerrs =
+        (accdefns, (* rev *) accerrs) (* don't reverse args IN a function *)
         | checkaccum ((fdefn as (fdecl, fbody)) :: frest) accdefns accerrs = (
             let val accdecls = map #1 accdefns
                 val newerrs =
