@@ -1,4 +1,4 @@
-proc sumTo(n: int) -> int {
+proc sum-to(n: int) -> int {
     var i: int;
     var res: int;
     (* res := 0;  (* uninitialized *) *)
@@ -12,5 +12,5 @@ proc sumTo(n: int) -> int {
 }
 
 main {
-    print sumTo(10);
+    print sum-to(10);
 }

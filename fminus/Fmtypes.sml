@@ -155,12 +155,12 @@ fun typeexpr (decls: symtable * ftable)
 (** Check that all statements in a list are reachable. *) 
 fun checkreachable ([]: stmt list) = []
   | checkreachable (stmt::[]) = [] 
-  | checkreachable ({stree, pos=Location.Loc (l,r)}::stmt2::stmts) = 
+  | checkreachable ({stree, pos=Location.Loc (l,r)}::stmt2::stmts) =
     case stree of
         ReturnStmt _ => ["Unreachable code after return"]
       | BreakStmt => ["Line " ^ Int.toString l ^ "," ^ Int.toString r
                       ^ ": Unreachable code after break"] 
-      | _ => checkreachable (stmt2::stmts)
+      | _ => checkreachable (stmt2::stmts) 
 
 (** Check that a break is inside a loop *)
 fun checkbreak [] = []
@@ -279,7 +279,9 @@ fun checkstmt (vsyms: symtable) adecls fdecls
                         ^ "' doesn't match function type '"
                         ^ (typestr (#vtype entry)) ^ "'"]
                   else []
-                | NONE => raise Empty )(* if happens, bug in symtable code *)
+                (* if happens, bug in symtable code *)
+                | NONE => (print "Return not found\n"; raise Empty) )
+                            
       in ({stree=ReturnStmt (SOME checkedexpr), pos=pos}, newerrs @ msgs)
       end )
   | checkstmt _ argsyms _ {stree=ReturnStmt NONE, pos} = (
@@ -290,7 +292,8 @@ fun checkstmt (vsyms: symtable) adecls fdecls
                 then ["Empty return statement; expected value of type "
                       ^ typestr (#vtype entry)]
                 else []
-             | NONE => raise Empty )(* if happens, bug in symtable code *)
+              | NONE => (print "Couldn't find return entry\n";
+                         raise Empty) )(* if happens, bug in symtable code *)
     in ({stree=ReturnStmt NONE, pos=pos}, newerrs)
     end )
   | checkstmt _ _ _ ({stree=BreakStmt, pos}) =
@@ -394,30 +397,32 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
 
 (** Check if a statement list always returns *)
 fun willreturn [] = false
-  | willreturn (stmt::stmts) =
+  | willreturn (stmt::stmts) = 
     case (#stree stmt) of
         ReturnStmt _ => true
       | IfStmt (e, (_, thenblk), SOME (_, elseblk)) =>
         willreturn thenblk andalso willreturn elseblk
-      | _ => willreturn stmts
+      | _ => willreturn stmts 
 
 (** Procs: Add return type to argument types and call checkblock on the body *)
-fun checkproc gsyms prevfdecls (top as {fname, argdecls, rettype}, sblock) =
-  let val (newblock, errs) =
+fun checkproc gsyms prevfdecls (top as {fname, argdecls, rettype},
+                                sblock as (blksyms, stmtlist)) =
+  let val (newblock, errs) = 
           checkblock
               gsyms
+              (* Add return type to proc's -argument- symbol table *)
               ({name="*return*", vtype=rettype, sclass=Local}::argdecls)
-              prevfdecls sblock
-      val returnerr =
-          if rettype = FmUnit orelse willreturn (#2 sblock)
+              prevfdecls sblock 
+      val returnerr = 
+          if rettype = FmUnit orelse willreturn stmtlist
           then []
           else ["Procedure " ^ fname ^ " may not return a value"]
-      val initerrs = #1 (checkinit (gsyms @ argdecls) (#2 sblock))
-      val breakerrs = checkbreak (#2 sblock)
+      val initerrs = #1 (checkinit (gsyms @ argdecls) stmtlist)
+      val breakerrs = ( print "did checkinit\n"; checkbreak stmtlist )
       val newproc = (top, newblock)
   in (newproc, if errs @ returnerr @ initerrs @ breakerrs = [] then []
-                else "*** Errors in procedure " ^ fname
-                     ^ ": " :: (errs @ returnerr @ initerrs @ breakerrs))
+               else "*** Errors in procedure " ^ fname
+                    ^ ": " :: (errs @ returnerr @ initerrs @ breakerrs))
   end
 
 (** must get new versions of fdefns and main, plus return errors *)
@@ -439,22 +444,26 @@ fun checkprogram {ddecls, gdecls, fdefns, main} =
                           (newerrs @ procerrs @ accerrs) (* reverse at end *)
             end )
       val (newfdefns, errs) = checkaccum fdefns [] []
-      val newfdecls = map #1 newfdefns
+      val newfdecls = (print "finished checking functions\n"; map #1 newfdefns)
       (* main is treated separately (for now) *)
       val (newmain, mainerrs) =
           case main
-           of SOME mainblock =>
-              let val (initerrs, _) = checkinit predecls (#2 mainblock)
-                  val (newmblock, blkerrs) =
-                      checkblock predecls [] newfdecls mainblock
+           of SOME (mainblock as (mainsyms, mainstmts)) =>
+              let val (initerrs, _) = checkinit predecls mainstmts
+                  val (newmblock, blkerrs) = 
+                      checkblock
+                          predecls
+                          (* Only argument symbol is return type of Unit *)
+                          [{name="*return*", vtype=FmUnit, sclass=Local}]
+                          newfdecls mainblock 
                   val mainerrs =
                       if blkerrs @ initerrs <> []
-                      then "*** Errors in main: " :: blkerrs @ initerrs
+                      then "*** Errors in main: " :: (blkerrs @ initerrs)
                       else []
               in (SOME newmblock, mainerrs)
-              end 
+              end
             | NONE => (NONE, [])
   in
       ({ddecls=ddecls, gdecls=gdecls, fdefns=newfdefns, main=newmain},
-       mainerrs @ errs)
+       errs @ mainerrs)
   end

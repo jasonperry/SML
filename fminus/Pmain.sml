@@ -40,18 +40,19 @@ fun parseReport file stream lexbuf =
 
 (* Create lexer from instream *)
 
-fun createLexerStream (is : BasicIO.instream) =
-  Lexing.createLexer (fn buff => fn n => Nonstdio.buff_input is buff 0 n)
+fun createLexerStream (instrm : BasicIO.instream) =
+  Lexing.createLexer (fn buff => fn n => Nonstdio.buff_input instrm buff 0 n)
 
 (** Parse a program from a file - change to get two trees? *)
 fun parse file =
-    let val is     = Nonstdio.open_in_bin file
-        val lexbuf = createLexerStream is
-	val pgm    = parseReport file is lexbuf
-	             handle exn => (BasicIO.close_in is; raise exn)
+    let val instrm = Nonstdio.open_in_bin file
+        val lexbuf = createLexerStream instrm
+	val pgm    = parseReport file instrm lexbuf
+	             handle exn => (BasicIO.close_in instrm; raise exn)
         val (checkedpgm, errs)   = Fmtypes.checkprogram pgm
-    in 
-        BasicIO.close_in is;
+    in
+        print "Got through typecheck\n";
+        BasicIO.close_in instrm;
 	(checkedpgm, errs, if errs = [] (* should handle these together? *)
                            then FmtoC.printprog checkedpgm else "")
          (* FmtoC.printprog checkedpgm) *)
