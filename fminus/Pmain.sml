@@ -43,31 +43,31 @@ fun parseReport file stream lexbuf =
 fun createLexerStream (instrm : BasicIO.instream) =
   Lexing.createLexer (fn buff => fn n => Nonstdio.buff_input instrm buff 0 n)
 
-(** Parse a program from a file - change to get two trees? *)
+fun printErrs errlist = ()
+                     
+(** Parse a program from a file, typecheck *)
 fun parse file =
     let val instrm = Nonstdio.open_in_bin file
         val lexbuf = createLexerStream instrm
 	val pgm    = parseReport file instrm lexbuf
 	             handle exn => (BasicIO.close_in instrm; raise exn)
-        val (checkedpgm, errs)   = Fmtypes.checkprogram pgm
-    in
-        print "Got through typecheck\n";
-        BasicIO.close_in instrm;
-	(checkedpgm, errs, if errs = [] (* should handle these together? *)
-                           then FmtoC.printprog checkedpgm else "")
-         (* FmtoC.printprog checkedpgm) *)
+    in (* returns (pgm, errs) pair *)
+        Fmtypes.checkprogram pgm before BasicIO.close_in instrm
     end
 
+(* Call parser and output C version or errors *)
 fun main () =
   case CommandLine.arguments ()
    of [] =>
       TextIO.output(TextIO.stdErr, "Usage: " ^ CommandLine.name()
                                    ^ " <source.fm>\n")
     | arg::_ => 
-      let val (pgm, errs, cstring) = parse (hd (CommandLine.arguments ()))
-      in
-          TextIO.output(TextIO.stdErr, FmtoC.termwith "\n" errs);
-          TextIO.output(TextIO.stdOut, cstring)
+      let val (checkedpgm, errs) = parse (hd (CommandLine.arguments ()))
+          val cpgm = if errs = [] (* should handle these together? *)
+                     then FmtoC.printprog checkedpgm
+                     else (printErrs errs; "")
+      in TextIO.output(TextIO.stdErr, FmtoC.termwith "\n" errs);
+         TextIO.output(TextIO.stdOut, cpgm)
       end
 
 val _ = main ()

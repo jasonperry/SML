@@ -35,8 +35,9 @@ datatype etree = ConstInt of int
                | CompExpr of relop * expr * expr
                | ArithExpr of arithop * expr * expr
                | IfExpr of expr * expr * expr
-               | FunCallExpr of string * expr list 
-withtype expr = {etree: etree, typ: valtype}
+               | FunCallExpr of string * expr list
+(* should have (etree, decor) pair, only decor is record? *)
+withtype expr = {etree: etree, typ: valtype, pos:srcpos}
 
 (** for now, only statements can have position info--good compromise *)
 datatype stree = AssignStmt of string * expr (* Symentry ref here too?

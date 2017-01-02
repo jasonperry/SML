@@ -117,7 +117,7 @@ Fdefns:
 ;
 Fdefn: 
     PROC NAME LPAR Params RPAR Ftype Sblock { ({fname=$2,
-                                                argdecls=(addstoretype Arg $4), 
+                                                argdecls=(addstoretype Arg $4),
                                                 rettype=$6}, $7) }
 ;
 Params: 
@@ -181,7 +181,8 @@ PrintStmt:
 CallStmt:
     NAME LPAR Args RPAR                 { {stree=CallStmt
                                             {etree=FunCallExpr ($1, $3),
-                                             typ=Untyped},
+                                             typ=Untyped,
+                                             pos=Location.getCurrentLocation()},
                                            pos=Location.getCurrentLocation()} }
 ;
 ReturnStmt:
@@ -209,56 +210,80 @@ Expr:
 ;
 
 VarExpr: 
-    NAME                                { {etree=VarExpr $1, typ=Untyped} }
+    NAME                                { {etree=VarExpr $1, typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
 ;
 // All RelExprs have type bool, but AssocExprs can have type bool also.
 RelExpr:
     AssocExpr EQ AssocExpr              { {etree=CompExpr (Eq, $1, $3),
-                                           typ=Untyped } }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr NE AssocExpr              { {etree=CompExpr (Ne, $1, $3),
-                                           typ=Untyped } }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr LT AssocExpr              { {etree=CompExpr (Lt, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr LE AssocExpr              { {etree=CompExpr (Le, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr GT AssocExpr              { {etree=CompExpr (Gt, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr GE AssocExpr              { {etree=CompExpr (Ge, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | NOT RelExpr                         { {etree=NotExpr $2,
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | RelExpr AND RelExpr                 { {etree=BoolExpr (And, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | RelExpr OR RelExpr                  { {etree=BoolExpr (Or, $1, $3),
-                                           typ=Untyped} }
-
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
 ;
 AssocExpr:
-    INT                                 { {etree=ConstInt $1, typ=Untyped} }
-  | DOUBLE                              { {etree=ConstDouble $1, typ=Untyped} }
-  | TRUE                                { {etree=ConstBool true, typ=Untyped} }
-  | FALSE                               { {etree=ConstBool false, typ=Untyped} }
+    INT                                 { {etree=ConstInt $1, typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
+  | DOUBLE                              { {etree=ConstDouble $1, typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
+  | TRUE                                { {etree=ConstBool true, typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
+  | FALSE                               { {etree=ConstBool false, typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | VarExpr                             { $1 }
-  | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr { {etree=IfExpr ($3, $6, $8),
-                                                          typ=Untyped} }
+  | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr
+                                        { {etree=IfExpr ($3, $6, $8),
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr DIV AssocExpr             { {etree=ArithExpr (Div, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr MOD AssocExpr             { {etree=ArithExpr (Mod, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr TIMES AssocExpr           { {etree=ArithExpr (Times, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr PLUS AssocExpr            { {etree=ArithExpr (Plus, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr MINUS AssocExpr           { {etree=ArithExpr (Minus, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr XOR AssocExpr             { {etree=ArithExpr (Xor, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr BITOR AssocExpr           { {etree=ArithExpr (Bitor, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | AssocExpr BITAND AssocExpr          { {etree=ArithExpr (Bitand, $1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
   | NAME LPAR Args RPAR                 { {etree=FunCallExpr ($1, $3),
-                                           typ=Untyped} }
+                                           typ=Untyped,
+                                           pos=Location.getCurrentLocation()} }
 ;
 // StringExpr // for concatenation and such.
 // probably should just include as assocExpr and save it for the typechecker.

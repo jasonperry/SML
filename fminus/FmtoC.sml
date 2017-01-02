@@ -83,7 +83,7 @@ fun printstmt {stree, pos} =
         | FmInt => "printf(\"%d\\n\", " ^ printexpr expr ^ ");"
         | FmDouble => "printf(\"%f\\n\", " ^ printexpr expr ^ ");"
         | t => raise Unsupported ("Unsupported type: " ^ (typestr t)) )
-    | CallStmt {etree=FunCallExpr (fname, arglist), typ=_} =>
+    | CallStmt {etree=FunCallExpr (fname, arglist), typ, pos} =>
       fname ^ "(" ^ joinwith ", " (map printexpr arglist) ^ ");"
     | CallStmt _ => raise Empty (* shouldn't happen *) 
     | ReturnStmt NONE => "return;"

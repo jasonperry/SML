@@ -35,17 +35,17 @@ fun intersect_syms l1 [] = []
 
 (** Assign a type to an expression. Take expr and return (expr, msgs) *)
 fun typeexpr (decls: symtable * ftable)
-             {etree=ConstInt i, typ=_} : expr * string list =
-    ({etree=ConstInt i, typ=FmInt}, [])
-  | typeexpr _ {etree=ConstDouble d, typ=_} =
-    ({etree=ConstDouble d, typ=FmDouble}, [])
-  | typeexpr _ {etree=ConstBool b, typ=_} =
-    ({etree=ConstBool b, typ=FmBool}, [])
-  | typeexpr (vsyms, _) (e as {etree=VarExpr var, typ=_}) = (
+             {etree=ConstInt i, typ=_, pos} : expr * string list =
+    ({etree=ConstInt i, typ=FmInt, pos=pos}, [])
+  | typeexpr _ {etree=ConstDouble d, typ=_, pos} =
+    ({etree=ConstDouble d, typ=FmDouble, pos=pos}, [])
+  | typeexpr _ {etree=ConstBool b, typ=_, pos} =
+    ({etree=ConstBool b, typ=FmBool, pos=pos}, [])
+  | typeexpr (vsyms, _) (e as {etree=VarExpr var, typ=_, pos}) = (
     case (vlookup vsyms var)
-     of SOME entry => ({etree=VarExpr var, typ=(#vtype entry)}, [])
+     of SOME entry => ({etree=VarExpr var, typ=(#vtype entry), pos=pos}, [])
      |  NONE => (e, ["Undefined variable: " ^ var]) )
-  | typeexpr decls {etree=NotExpr e1, typ=_} = (
+  | typeexpr decls {etree=NotExpr e1, typ=_, pos} = (
       let val (res, msg1) = typeexpr decls e1
           val typ = if #typ res = Untyped orelse #typ res <> FmBool
                     then Untyped else FmBool
@@ -54,9 +54,9 @@ fun typeexpr (decls: symtable * ftable)
                             ^ "in 'not' expression"]
                       else [])
                      @ msg1
-      in ({etree=NotExpr e1, typ=typ}, msgs)
+      in ({etree=NotExpr e1, typ=typ, pos=pos}, msgs)
       end )
-  | typeexpr decls {etree=BoolExpr (oper, e1, e2), typ=_} = (
+  | typeexpr decls {etree=BoolExpr (oper, e1, e2), typ=_, pos} = (
       let val ((res1, msg1),(res2, msg2)) =
               (typeexpr decls e1, typeexpr decls e2)
           val typ = if #typ res1 = Untyped
@@ -74,10 +74,11 @@ fun typeexpr (decls: symtable * ftable)
                             ^ ") in Boolean expression"]
                       else [])
                      @ msg1 @ msg2
-      in ({etree=BoolExpr (oper, e1, e1), typ=typ}, msgs)
+      in ({etree=BoolExpr (oper, e1, e1), typ=typ, pos=pos}, msgs)
       end )
-  | typeexpr decls {etree=CompExpr (oper, e1, e2), typ=_} = (
-      let val (({etree=_, typ=t1}, msg1), ({etree=_, typ=t2}, msg2)) =
+  | typeexpr decls {etree=CompExpr (oper, e1, e2), typ=_, pos} = (
+      let val (({etree=_, typ=t1, pos=pos1}, msg1),
+               ({etree=_, typ=t2, pos=pos2}, msg2)) =
               (typeexpr decls e1, typeexpr decls e2)
           val (typ,newmsgs) =
               if t1 = Untyped orelse t2 = Untyped then (Untyped, [])
@@ -90,10 +91,12 @@ fun typeexpr (decls: symtable * ftable)
               then (Untyped, ["Ordered comparison of non-ordered type: "
                              ^ (typestr t1)])
               else (FmBool, [])
-      in ({etree=CompExpr (oper, e1, e2), typ=typ}, newmsgs @ msg1 @ msg2)
+      in ({etree=CompExpr (oper, e1, e2), typ=typ, pos=pos},
+          newmsgs @ msg1 @ msg2)
       end )
-  | typeexpr decls {etree=ArithExpr (oper, e1, e2), typ=_} = (
-      let val (({etree=_, typ=t1}, msg1), ({etree=_, typ=t2}, msg2)) =
+  | typeexpr decls {etree=ArithExpr (oper, e1, e2), typ=_, pos} = (
+      let val (({etree=_, typ=t1, pos=pos1}, msg1),
+               ({etree=_, typ=t2, pos=pos2}, msg2)) =
               (typeexpr decls e1, typeexpr decls e2)
           val (typ,newmsgs) =
               if t1 = Untyped orelse t2 = Untyped then (Untyped, [])
@@ -104,12 +107,13 @@ fun typeexpr (decls: symtable * ftable)
               then (Untyped,
                     ["Non-numeric type in expression: " ^ (typestr t1)])
               else (t1, [])
-      in ({etree=ArithExpr (oper, e1, e2), typ=typ}, newmsgs @ msg1 @ msg2)
+      in ({etree=ArithExpr (oper, e1, e2), typ=typ, pos=pos},
+          newmsgs @ msg1 @ msg2)
       end )
-  | typeexpr decls {etree=IfExpr (ifexp, thenexp, elsexp), typ=_} = (
-      let val ({etree=_, typ=iftype}, msg1) = typeexpr decls ifexp
-          val ({etree=_, typ=thentype}, msg2) = typeexpr decls thenexp
-          val ({etree=_, typ=elstype}, msg3) = typeexpr decls elsexp
+  | typeexpr decls {etree=IfExpr (ifexp, thenexp, elsexp), typ=_, pos} = (
+      let val ({etree=_, typ=iftype, pos=pos1}, msg1) = typeexpr decls ifexp
+          val ({etree=_, typ=thentype, pos=pos2}, msg2) = typeexpr decls thenexp
+          val ({etree=_, typ=elstype, pos=pos3}, msg3) = typeexpr decls elsexp
           val (typ, newmsgs) =
               if iftype = Untyped orelse thentype = Untyped
                       orelse elstype = Untyped
@@ -123,19 +127,19 @@ fun typeexpr (decls: symtable * ftable)
                               ^ (typestr elstype) ^ ") for then/else"])
               else (thentype, [])
       in
-          ({etree = IfExpr (ifexp, thenexp, elsexp), typ=typ},
+          ({etree = IfExpr (ifexp, thenexp, elsexp), typ=typ, pos=pos},
            newmsgs @ msg1 @ msg2 @ msg3)
       end )
   | typeexpr (decls as (vsyms, fdecls)) {etree=FunCallExpr (fname, fnargs),
-                                         typ=_} = (
+                                         typ=_, pos} = (
       let fun matchargs [] [] = [] 
             | matchargs (p::ps) [] = ["Not enough arguments to " ^ fname]
             | matchargs [] (p::ps) = ["Too many arguments to " ^ fname]
             | matchargs ({name, vtype, sclass}::ps) (arg::args) = 
               case typeexpr decls arg
-               of ({etree=_, typ=Untyped}, msgs) =>
+               of ({etree=_, typ=Untyped, pos=apos}, msgs) =>
                   msgs @ (matchargs ps args) (* Keep going *)
-                | ({etree=_, typ=atype}, msgs) => if atype = vtype
+                | ({etree=_, typ=atype, pos=apos}, msgs) => if atype = vtype
                              (* discarding msgs if typechecks *)
                              then matchargs ps args
                              else "Non-matching argument types: "  
@@ -149,7 +153,7 @@ fun typeexpr (decls: symtable * ftable)
                   (* issue: testing success based on no msgs (see above) *)
                    of [] => (rettype, []) 
                     | errs => (Untyped, errs)
-      in ({etree=FunCallExpr (fname, fnargs), typ=typ}, msgs)
+      in ({etree=FunCallExpr (fname, fnargs), typ=typ, pos=pos}, msgs)
       end )
 
 (** Check that all statements in a list are reachable. *) 
@@ -182,7 +186,7 @@ fun checkbreak [] = []
 (* vsyms has both local and global symbols *)
 fun checkstmt (vsyms: symtable) adecls fdecls
               {stree=AssignStmt (var, expr), pos} = (
-    let val (checkedexpr as {etree=_, typ=etype}, msgs) =
+    let val (checkedexpr as {etree=_, typ=etype, pos=pos1}, msgs) =
             typeexpr (vsyms @ adecls, fdecls) expr
         val newerrs = 
             case vlookup vsyms var 
@@ -201,7 +205,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls
 
   | checkstmt vsyms argsyms fdecls 
               {stree=IfStmt (cond, thenblock, elsblock), pos} = (
-      let val (checkedcond as {etree=_, typ=ctype}, msgs1) =
+      let val (checkedcond as {etree=_, typ=ctype, pos=pos1}, msgs1) =
               typeexpr (vsyms @ argsyms, fdecls) cond
           val (checkedthen, msgs2) =
               checkblock vsyms argsyms fdecls thenblock
@@ -221,7 +225,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls
 
   | checkstmt vsyms argsyms fdecls
               {stree=WhileStmt (cond, bblock), pos} = (
-      let val (checkedcond as {etree=_, typ=ctype}, msgs1) =
+      let val (checkedcond as {etree=_, typ=ctype, pos=pos1}, msgs1) =
               typeexpr (vsyms @ argsyms, fdecls) cond
           val (checkedbody, msgs2) = checkblock vsyms argsyms fdecls bblock 
           val newerrs = if ctype <> FmBool
@@ -236,7 +240,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls
               {stree=ForStmt (initstmt, cond, updatestmt, bblock), pos} = (
       (* If I want to allow new vardecls in the initstmt, change here *)
       let val (checkedinit, msgs1) = checkstmt vsyms argsyms fdecls initstmt
-          val (checkedcond as {etree=_, typ=ctype}, msgs2) =
+          val (checkedcond as {etree=_, typ=ctype, pos=cpos}, msgs2) =
               typeexpr (vsyms @ argsyms, fdecls) cond
           val (checkedupd, msgs3) = checkstmt vsyms argsyms fdecls updatestmt
           val (checkedbody, msgs4) = checkblock vsyms argsyms fdecls bblock 
@@ -258,7 +262,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls
   | checkstmt vsyms argsyms fdecls
               {stree=CallStmt callexpr, pos} = (
       (* Parser ensures it's a FunCallExpr *)
-      let val (checkedexpr as {etree=_, typ=rettype}, msgs) =
+      let val (checkedexpr as {etree=_, typ=rettype, pos=cpos}, msgs) =
               typeexpr (vsyms @ argsyms, fdecls) callexpr
           val newerrs = if rettype <> FmUnit
                        then ["Discarded return value of type "
@@ -268,7 +272,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls
       end )
   | checkstmt vsyms argsyms fdecls
               {stree=ReturnStmt (SOME expr), pos} = (
-      let val (checkedexpr as {etree=_, typ=rettype}, msgs) =
+      let val (checkedexpr as {etree=_, typ=rettype, pos=rpos}, msgs) =
               typeexpr (vsyms @ argsyms, fdecls) expr
           val newerrs = (
               case vlookup argsyms "*return*" 
@@ -378,7 +382,7 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
                 end
               | PrintStmt expr =>
                 (checkvars initedvars (usedvars expr), [])
-              | CallStmt {etree=FunCallExpr (fname, argexps), typ=_} =>
+              | CallStmt {etree=FunCallExpr (fname, argexps), typ=_, pos} =>
                 (List.concat (map (checkvars initedvars o usedvars) argexps),
                  [])
               | CallStmt _ => raise Empty (* shouldn't happen *) 
