@@ -95,7 +95,7 @@ and printsblock (decls, stmts) = "{\n" ^
   termwith ";\n" (map printdecl decls) ^
   joinwith "\n" (map printstmt stmts) ^ "\n}\n"
 
-fun printproc ({fname, argdecls, rettype}, body) =
+fun printproc ({fname, argdecls, rettype, pos}, body) =
   (case rettype of
        FmInt => "int "
      | FmDouble => "double "

@@ -116,9 +116,12 @@ Fdefns:
   | Fdefn Fdefns                        { $1 :: $2 }
 ;
 Fdefn: 
-    PROC NAME LPAR Params RPAR Ftype Sblock { ({fname=$2,
-                                                argdecls=(addstoretype Arg $4),
-                                                rettype=$6}, $7) }
+    PROC NAME LPAR Params RPAR Ftype Sblock
+                                        { ({fname=$2,
+                                            argdecls=(addstoretype Arg $4),
+                                            rettype=$6,
+                                            pos=Location.getCurrentLocation()},
+                                           $7) }
 ;
 Params: 
     /* empty */                         { [] }

@@ -21,7 +21,7 @@ fun vlookup ([]:symtable) sym = NONE
 
 (** Look up in function name symbol table *)
 fun flookup ([]:ftable) name = NONE
-  | flookup ((entry as {fname, argdecls, rettype})::rest) name =
+  | flookup ((entry as {fname, argdecls, rettype, pos})::rest) name =
     if name = fname then SOME entry
     else flookup rest name
 
@@ -35,7 +35,7 @@ fun intersect_syms l1 [] = []
 
 (** Assign a type to an expression. Take expr and return (expr, msgs) *)
 fun typeexpr (decls: symtable * ftable)
-             {etree=ConstInt i, typ=_, pos} : expr * string list =
+             {etree=ConstInt i, typ=_, pos} : expr * errormsg list =
     ({etree=ConstInt i, typ=FmInt, pos=pos}, [])
   | typeexpr _ {etree=ConstDouble d, typ=_, pos} =
     ({etree=ConstDouble d, typ=FmDouble, pos=pos}, [])
@@ -44,14 +44,14 @@ fun typeexpr (decls: symtable * ftable)
   | typeexpr (vsyms, _) (e as {etree=VarExpr var, typ=_, pos}) = (
     case (vlookup vsyms var)
      of SOME entry => ({etree=VarExpr var, typ=(#vtype entry), pos=pos}, [])
-     |  NONE => (e, ["Undefined variable: " ^ var]) )
+     |  NONE => (e, [("Undefined variable: " ^ var, pos)]) )
   | typeexpr decls {etree=NotExpr e1, typ=_, pos} = (
       let val (res, msg1) = typeexpr decls e1
           val typ = if #typ res = Untyped orelse #typ res <> FmBool
                     then Untyped else FmBool
           val msgs = (if #typ res <> FmBool
-                      then ["Non-boolean type :" ^ (typestr (#typ res))
-                            ^ "in 'not' expression"]
+                      then [("Non-boolean type :" ^ (typestr (#typ res))
+                            ^ "in 'not' expression", pos)]
                       else [])
                      @ msg1
       in ({etree=NotExpr e1, typ=typ, pos=pos}, msgs)
@@ -65,13 +65,13 @@ fun typeexpr (decls: symtable * ftable)
                        orelse #typ res2 <> FmBool
                     then Untyped else FmBool
           val msgs = (if #typ res1 <> FmBool
-                      then ["Non-boolean type : (" ^ (typestr (#typ res1))
-                            ^ ") in Boolean expression"]
+                      then [("Non-boolean type : (" ^ (typestr (#typ res1))
+                            ^ ") in Boolean expression", pos)]
                       else [])
                      @
                      (if #typ res2 <> FmBool
-                      then ["Non-boolean type : (" ^ typestr (#typ res2)
-                            ^ ") in Boolean expression"]
+                      then [("Non-boolean type : (" ^ typestr (#typ res2)
+                            ^ ") in Boolean expression", pos)]
                       else [])
                      @ msg1 @ msg2
       in ({etree=BoolExpr (oper, e1, e1), typ=typ, pos=pos}, msgs)
@@ -83,13 +83,13 @@ fun typeexpr (decls: symtable * ftable)
           val (typ,newmsgs) =
               if t1 = Untyped orelse t2 = Untyped then (Untyped, [])
               else if t1 <> t2
-              then (Untyped, ["Different types in comparison: ("
-                             ^ (typestr t1) ^ ", " ^ (typestr t2) ^ ")"])
+              then (Untyped, [("Different types in comparison: ("
+                               ^ (typestr t1) ^ ", " ^ (typestr t2) ^ ")", pos)])
               else if (oper = Gt orelse oper = Ge orelse oper = Lt
                        orelse oper = Le)
                       andalso (t1 <> FmInt andalso t1 <> FmDouble)
-              then (Untyped, ["Ordered comparison of non-ordered type: "
-                             ^ (typestr t1)])
+              then (Untyped, [("Ordered comparison of non-ordered type: "
+                             ^ (typestr t1), pos)])
               else (FmBool, [])
       in ({etree=CompExpr (oper, e1, e2), typ=typ, pos=pos},
           newmsgs @ msg1 @ msg2)
@@ -101,11 +101,11 @@ fun typeexpr (decls: symtable * ftable)
           val (typ,newmsgs) =
               if t1 = Untyped orelse t2 = Untyped then (Untyped, [])
               else if t1 <> t2
-              then (Untyped, ["Incompatible types in arithmetic expr: (" ^ 
-                              (typestr t1) ^ ", " ^ (typestr t2) ^ ")"])
+              then (Untyped, [("Incompatible types in arithmetic expr: (" ^ 
+                               (typestr t1) ^ ", " ^ (typestr t2) ^ ")", pos)])
               else if t1 <> FmInt andalso t1 <> FmDouble
               then (Untyped,
-                    ["Non-numeric type in expression: " ^ (typestr t1)])
+                    [("Non-numeric type in expression: " ^ (typestr t1), pos)])
               else (t1, [])
       in ({etree=ArithExpr (oper, e1, e2), typ=typ, pos=pos},
           newmsgs @ msg1 @ msg2)
@@ -119,12 +119,12 @@ fun typeexpr (decls: symtable * ftable)
                       orelse elstype = Untyped
               then (Untyped, []) (* Just pass existing messages *)
               else if iftype <> FmBool
-              then (Untyped, ["Non-boolean type for test expression: "
-                              ^ typestr iftype])
+              then (Untyped, [("Non-boolean type for test expression: "
+                              ^ typestr iftype, pos)])
               else if thentype <> elstype (* One-error-at-a-time approach *)
-              then (Untyped, ["Non-matching types ("
+              then (Untyped, [("Non-matching types ("
                               ^ (typestr thentype) ^ ", "
-                              ^ (typestr elstype) ^ ") for then/else"])
+                              ^ (typestr elstype) ^ ") for then/else", pos)])
               else (thentype, [])
       in
           ({etree = IfExpr (ifexp, thenexp, elsexp), typ=typ, pos=pos},
@@ -133,8 +133,8 @@ fun typeexpr (decls: symtable * ftable)
   | typeexpr (decls as (vsyms, fdecls)) {etree=FunCallExpr (fname, fnargs),
                                          typ=_, pos} = (
       let fun matchargs [] [] = [] 
-            | matchargs (p::ps) [] = ["Not enough arguments to " ^ fname]
-            | matchargs [] (p::ps) = ["Too many arguments to " ^ fname]
+            | matchargs (p::ps) [] = [("Not enough arguments to " ^ fname, pos)]
+            | matchargs [] (p::ps) = [("Too many arguments to " ^ fname, pos)]
             | matchargs ({name, vtype, sclass}::ps) (arg::args) = 
               case typeexpr decls arg
                of ({etree=_, typ=Untyped, pos=apos}, msgs) =>
@@ -142,13 +142,14 @@ fun typeexpr (decls: symtable * ftable)
                 | ({etree=_, typ=atype, pos=apos}, msgs) => if atype = vtype
                              (* discarding msgs if typechecks *)
                              then matchargs ps args
-                             else "Non-matching argument types: "  
-                                  ^ (typestr vtype) ^ ", " 
-                                  ^ (typestr atype) :: (matchargs ps args)
+                             else ("Non-matching argument types: "  
+                                   ^ (typestr vtype) ^ ", " 
+                                   ^ (typestr atype), pos) :: (matchargs ps args)
           val (typ, msgs) =
               case flookup fdecls fname 
-               of NONE => (Untyped, ["Unrecognized function name: " ^ fname])
-               |  SOME {fname, argdecls, rettype} =>
+               of NONE => (Untyped, [("Unrecognized function name: "
+                                      ^ fname, pos)])
+               |  SOME {fname, argdecls, rettype, pos} =>
                   case matchargs argdecls fnargs
                   (* issue: testing success based on no msgs (see above) *)
                    of [] => (rettype, []) 
@@ -159,19 +160,17 @@ fun typeexpr (decls: symtable * ftable)
 (** Check that all statements in a list are reachable. *) 
 fun checkreachable ([]: stmt list) = []
   | checkreachable (stmt::[]) = [] 
-  | checkreachable ({stree, pos=Location.Loc (l,r)}::stmt2::stmts) =
+  | checkreachable ({stree, pos}::stmt2::stmts) =
     case stree of
-        ReturnStmt _ => ["Unreachable code after return"]
-      | BreakStmt => ["Line " ^ Int.toString l ^ "," ^ Int.toString r
-                      ^ ": Unreachable code after break"] 
-      | _ => checkreachable (stmt2::stmts) 
+        ReturnStmt _ => [("Unreachable code after return", pos)]
+      | BreakStmt => [("Unreachable code after break", pos)] 
+      | _ => checkreachable (stmt2::stmts)
 
 (** Check that a break is inside a loop *)
 fun checkbreak [] = []
-  | checkbreak ({stree, pos=Location.Loc (l,r)}::stmts) =
+  | checkbreak ({stree, pos}::stmts) =
     case stree of
-        BreakStmt => ["Line " ^ Int.toString l ^ "," ^ Int.toString r
-                      ^ ": Break statement used outside of loop"]
+        BreakStmt => [("Break statement used outside of loop", pos)]
       | IfStmt (_, (_, thenstmts), SOME (_, elsestmts)) =>
         (checkbreak thenstmts)
         @ (checkbreak elsestmts)
@@ -192,14 +191,14 @@ fun checkstmt (vsyms: symtable) adecls fdecls
             case vlookup vsyms var 
              of SOME entry => ( 
                  if etype <> (#vtype entry)
-                 then ["Assignment type mismatch: " ^ (typestr (#vtype entry))
-                      ^ ", " ^ (typestr etype)]
+                 then [("Assignment type mismatch: " ^ (typestr (#vtype entry))
+                        ^ ", " ^ (typestr etype), pos)]
                  else [] )
               | NONE => (case vlookup adecls var
-                          of NONE => ["Assignment to undefined variable: "
-                                      ^ var]
-                           | SOME _ => ["Assignment to argument "
-                                        ^ var ^ " not allowed"] )
+                          of NONE => [("Assignment to undefined variable: "
+                                       ^ var, pos)]
+                           | SOME _ => [("Assignment to argument "
+                                         ^ var ^ " not allowed", pos)] )
     in ({stree=AssignStmt (var, checkedexpr), pos=pos}, newerrs @ msgs)
     end )
 
@@ -217,7 +216,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls
                   end               
                 | NONE => (elsblock, []) )
           val newerrs = if ctype <> FmBool
-                       then ["Non-Boolean condition in if statement"]
+                       then [("Non-Boolean condition in if statement", pos)]
                        else []
       in ({stree=IfStmt (checkedcond, checkedthen, checkedelse), pos=pos},
           newerrs @ msgs1 @ msgs2 @ msgs3)
@@ -229,8 +228,8 @@ fun checkstmt (vsyms: symtable) adecls fdecls
               typeexpr (vsyms @ argsyms, fdecls) cond
           val (checkedbody, msgs2) = checkblock vsyms argsyms fdecls bblock 
           val newerrs = if ctype <> FmBool
-                       then ["Non-Boolean condition in while statement: type "
-                             ^ (typestr ctype)]
+                       then [("Non-Boolean condition in while statement: type "
+                              ^ (typestr ctype), pos)]
                        else []
       in ({stree=WhileStmt (checkedcond, checkedbody), pos=pos},
           newerrs @ msgs1 @ msgs2)
@@ -245,8 +244,8 @@ fun checkstmt (vsyms: symtable) adecls fdecls
           val (checkedupd, msgs3) = checkstmt vsyms argsyms fdecls updatestmt
           val (checkedbody, msgs4) = checkblock vsyms argsyms fdecls bblock 
           val newerrs = if ctype <> FmBool
-                       then ["Non-Boolean condition in 'for' statement: "
-                             ^ (typestr ctype)]
+                       then [("Non-Boolean condition in 'for' statement: "
+                              ^ (typestr ctype), pos)]
                        else []
       in ({stree=ForStmt (checkedinit, checkedcond, checkedupd, checkedbody),
            pos=pos}, newerrs @ msgs1 @ msgs2 @ msgs3 @ msgs4)
@@ -265,8 +264,8 @@ fun checkstmt (vsyms: symtable) adecls fdecls
       let val (checkedexpr as {etree=_, typ=rettype, pos=cpos}, msgs) =
               typeexpr (vsyms @ argsyms, fdecls) callexpr
           val newerrs = if rettype <> FmUnit
-                       then ["Discarded return value of type "
-                             ^ (typestr rettype)]
+                       then [("Discarded return value of type "
+                              ^ (typestr rettype), pos)]
                        else []
       in ({stree=CallStmt checkedexpr, pos=pos}, newerrs @ msgs)
       end )
@@ -279,9 +278,9 @@ fun checkstmt (vsyms: symtable) adecls fdecls
                   (* special entry to args table *)
                of SOME entry => 
                   if rettype <> (#vtype entry)
-                  then ["Returned value type '" ^ (typestr rettype)
-                        ^ "' doesn't match function type '"
-                        ^ (typestr (#vtype entry)) ^ "'"]
+                  then [("Returned value type '" ^ (typestr rettype)
+                         ^ "' doesn't match function type '"
+                         ^ (typestr (#vtype entry)) ^ "'", pos)]
                   else []
                 (* if happens, bug in symtable code *)
                 | NONE => (print "Return not found\n"; raise Empty) )
@@ -293,8 +292,8 @@ fun checkstmt (vsyms: symtable) adecls fdecls
             case vlookup argsyms "*return*" 
              of SOME entry =>
                 if (#vtype entry) <> FmUnit
-                then ["Empty return statement; expected value of type "
-                      ^ typestr (#vtype entry)]
+                then [("Empty return statement; expected value of type "
+                       ^ typestr (#vtype entry), pos)]
                 else []
               | NONE => (print "Couldn't find return entry\n";
                          raise Empty) )(* if happens, bug in symtable code *)
@@ -340,8 +339,9 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
               val nones =
                   List.mapPartial (fn p => if isSome (#2 p) then NONE
                                            else SOME (#1 p)) lookups
-          in map (fn v => "Variable '" ^ v
-                          ^ "' may be used before initialization") nones
+          in map (fn v => ("Variable '" ^ v
+                           ^ "' may be used before initialization",
+                           (#pos stmt))) nones
           end
         val (errs, newinits) = (
             case (#stree stmt) of
@@ -409,7 +409,7 @@ fun willreturn [] = false
       | _ => willreturn stmts 
 
 (** Procs: Add return type to argument types and call checkblock on the body *)
-fun checkproc gsyms prevfdecls (top as {fname, argdecls, rettype},
+fun checkproc gsyms prevfdecls (top as {fname, argdecls, rettype, pos},
                                 sblock as (blksyms, stmtlist)) =
   let val (newblock, errs) = 
           checkblock
@@ -420,13 +420,13 @@ fun checkproc gsyms prevfdecls (top as {fname, argdecls, rettype},
       val returnerr = 
           if rettype = FmUnit orelse willreturn stmtlist
           then []
-          else ["Procedure " ^ fname ^ " may not return a value"]
+          else [("Procedure " ^ fname ^ " may not return a value", pos)]
       val initerrs = #1 (checkinit (gsyms @ argdecls) stmtlist)
       val breakerrs = ( print "did checkinit\n"; checkbreak stmtlist )
       val newproc = (top, newblock)
   in (newproc, if errs @ returnerr @ initerrs @ breakerrs = [] then []
-               else "*** Errors in procedure " ^ fname
-                    ^ ": " :: (errs @ returnerr @ initerrs @ breakerrs))
+               else (*"*** Errors in procedure " ^ fname
+                    ^ ": " ::*) (errs @ returnerr @ initerrs @ breakerrs))
   end
 
 (** must get new versions of fdefns and main, plus return errors *)
@@ -439,8 +439,8 @@ fun checkprogram {ddecls, gdecls, fdefns, main} =
             let val accdecls = map #1 accdefns
                 val newerrs =
                     if isSome (flookup accdecls (#fname fdecl))
-                    then ["*** Error: function redeclaration: "
-                          ^ (#fname fdecl)]
+                    then [("*** Error: function redeclaration: "
+                           ^ (#fname fdecl), (#pos fdecl))]
                     else []
                 val (newfdefn, procerrs) = (checkproc predecls accdecls fdefn)
             in checkaccum frest
@@ -462,7 +462,7 @@ fun checkprogram {ddecls, gdecls, fdefns, main} =
                           newfdecls mainblock 
                   val mainerrs =
                       if blkerrs @ initerrs <> []
-                      then "*** Errors in main: " :: (blkerrs @ initerrs)
+                      then (*"*** Errors in main: " ::*) (blkerrs @ initerrs)
                       else []
               in (SOME newmblock, mainerrs)
               end

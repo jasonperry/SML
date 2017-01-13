@@ -11,7 +11,6 @@ fun parseExprPlain file stream lexbuf =
     handle exn => (Parsing.clearParser(); raise exn);
 
 (* Parse; show offending program piece on error *)
-
 fun parseReport file stream lexbuf =
     let val expr = 
 	    Fmparse.Main Fmlexer.Token lexbuf
@@ -43,31 +42,30 @@ fun parseReport file stream lexbuf =
 fun createLexerStream (instrm : BasicIO.instream) =
   Lexing.createLexer (fn buff => fn n => Nonstdio.buff_input instrm buff 0 n)
 
-fun printErrs errlist = ()
-                     
-(** Parse a program from a file, typecheck *)
-fun parse file =
-    let val instrm = Nonstdio.open_in_bin file
-        val lexbuf = createLexerStream instrm
-	val pgm    = parseReport file instrm lexbuf
-	             handle exn => (BasicIO.close_in instrm; raise exn)
-    in (* returns (pgm, errs) pair *)
-        Fmtypes.checkprogram pgm before BasicIO.close_in instrm
-    end
-
+fun printErrs (errlist: Fmabsyn.errormsg list) lexinfo =
+  case errlist
+   of [] => ()
+    | (errstr, pos)::rest => (
+        Location.errMsg lexinfo pos errstr
+        handle Fail _ => printErrs rest lexinfo ) (* compensating... *)
+      
 (* Call parser and output C version or errors *)
 fun main () =
   case CommandLine.arguments ()
    of [] =>
       TextIO.output(TextIO.stdErr, "Usage: " ^ CommandLine.name()
                                    ^ " <source.fm>\n")
-    | arg::_ => 
-      let val (checkedpgm, errs) = parse (hd (CommandLine.arguments ()))
-          val cpgm = if errs = [] (* should handle these together? *)
-                     then FmtoC.printprog checkedpgm
-                     else (printErrs errs; "")
-      in TextIO.output(TextIO.stdErr, FmtoC.termwith "\n" errs);
-         TextIO.output(TextIO.stdOut, cpgm)
+    | fname::_ => 
+      let val instrm = Nonstdio.open_in_bin fname
+          val lexbuf = createLexerStream instrm
+	  val pgm    = parseReport fname instrm lexbuf
+	               handle exn => (BasicIO.close_in instrm; raise exn)
+          val (checkedpgm, errs) = Fmtypes.checkprogram pgm
+      in
+          if errs = [] 
+          then TextIO.output (TextIO.stdOut, FmtoC.printprog checkedpgm)
+          else printErrs errs (fname, instrm, lexbuf);
+          BasicIO.close_in instrm
       end
 
 val _ = main ()

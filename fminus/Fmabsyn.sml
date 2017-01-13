@@ -1,5 +1,10 @@
 (* Fmabsyn.sml  -- the abstract syntax datatype *)
 
+(* Should these be here or somewhere else? 
+ * They're more related to checking and reporting than to types proper. *)
+type srcpos = Location.Location
+type errormsg = string * srcpos
+
 (* Some subtyping? Eq, Ord, Num, *)
 datatype valtype = FmInt | FmDouble | FmBool | FmUnit | Untyped
                    (* | FmArray of valtype * int *)
@@ -11,8 +16,6 @@ fun typestr FmInt = "int"
   | typestr FmUnit = "unit"
 
 datatype storeclass = Indata | Outdata | Global | Local | Arg
-
-type srcpos = Location.Location
 
 (* If I don't keep source locations here, how can I typecheck 'later'? *)
 
@@ -36,7 +39,7 @@ datatype etree = ConstInt of int
                | ArithExpr of arithop * expr * expr
                | IfExpr of expr * expr * expr
                | FunCallExpr of string * expr list
-(* should have (etree, decor) pair, only decor is record? *)
+(* should have (etree, PROPS of {typ, pos}) pair? *)
 withtype expr = {etree: etree, typ: valtype, pos:srcpos}
 
 (** for now, only statements can have position info--good compromise *)
@@ -55,7 +58,8 @@ withtype stmt = {stree: stree, pos: srcpos}
 
 type fdecl = { fname: string, 
                argdecls: symentry list,
-               rettype: valtype }
+               rettype: valtype,
+               pos: srcpos }
 
 type ftable = fdecl list
 
