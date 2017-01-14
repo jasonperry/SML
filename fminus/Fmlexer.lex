@@ -23,6 +23,7 @@
      case s of
          "var"          => VAR
        | "proc"         => PROC
+       | "const"        => CONST
        | "int"          => INTTYPE
        | "double"       => DBLTYPE
        | "bool"         => BOOLTYPE
@@ -75,12 +76,12 @@ rule Token = parse (* TODO: strings *)
   | `<`                 { LT }
   | ">="                { GE }
   | "<="                { LE }
-  | `+`                 { PLUS }                     
-  | `-`                 { MINUS }                     
-  | `*`                 { TIMES }                     
-  | `/`                 { DIV }           
-  | `%`                 { MOD }                    
-  | `|`                 { BITOR }                     
+  | `+`                 { PLUS }                   
+  | `-`                 { MINUS }
+  | `*`                 { TIMES }
+  | `/`                 { DIV }
+  | `%`                 { MOD }
+  | `|`                 { BITOR }
   | `&`                 { BITAND }
   | `^`                 { XOR }
   | "<<"                { LSHIFT }

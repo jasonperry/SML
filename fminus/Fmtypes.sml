@@ -1,6 +1,6 @@
 (* Semantic analysis functions, including typechecking *)
 
-open Fmabsyn;
+open Fmabsyn; (* Symtable functions now there *)
 
 (** Type-checking functions return a type or a list of errors *)
 datatype checkExprResult = T of expr (* Stitch 'em like a monad? *)
@@ -9,29 +9,6 @@ datatype checkExprResult = T of expr (* Stitch 'em like a monad? *)
 (* should check decls and types in different fns? *)
 
 (* exception InternalErr of string (* for things that shouldn't happen *) *)
-
-(*** SYMBOL TABLE FUNCTIONS ***)
-
-(** Look up in variable symbol table *)
-(* TODO: replace with more efficient structure, using a memoizing 'maker' *)
-fun vlookup ([]:symtable) sym = NONE
-  | vlookup ((entry as {name, vtype, sclass})::rest) sym = 
-    if name = sym then SOME entry
-    else vlookup rest sym
-
-(** Look up in function name symbol table *)
-fun flookup ([]:ftable) name = NONE
-  | flookup ((entry as {fname, argdecls, rettype, pos})::rest) name =
-    if name = fname then SOME entry
-    else flookup rest name
-
-(** Find intersection of two symbol tables. *)
-fun intersect_syms l1 [] = []
-  | intersect_syms [] l2 = []
-  | intersect_syms ((entry as {name, vtype, sclass})::es) l2 =
-    if isSome (vlookup l2 name)
-    then entry::(intersect_syms es l2)
-    else (intersect_syms es l2)
 
 (** Assign a type to an expression. Take expr and return (expr, msgs) *)
 fun typeexpr (decls: symtable * ftable)
@@ -193,7 +170,7 @@ fun checkstmt (vsyms: symtable) adecls fdecls
                  if etype <> (#vtype entry)
                  then [("Assignment type mismatch: " ^ (typestr (#vtype entry))
                         ^ ", " ^ (typestr etype), pos)]
-                 else [] )
+                 else (* if (#sclass entry) = Const error *)[] )
               | NONE => (case vlookup adecls var
                           of NONE => [("Assignment to undefined variable: "
                                        ^ var, pos)]
