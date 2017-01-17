@@ -1,14 +1,81 @@
 (* Semantic analysis functions, including typechecking *)
 
-open Fmabsyn; (* Symtable functions now there *)
-
-(** Type-checking functions return a type or a list of errors *)
-datatype checkExprResult = T of expr (* Stitch 'em like a monad? *)
-                         | B of string list * expr (* errors *) 
+open Fmabsyn;
+open Symtable;
 
 (* should check decls and types in different fns? *)
 
 (* exception InternalErr of string (* for things that shouldn't happen *) *)
+
+(** Attempt to reduce an expression to a constval *)
+fun evalConstExp syms (e as {etree, typ=_, pos=_}: expr) =
+  case etree
+   of ConstInt n => SOME (IntVal n)
+    | ConstDouble d => SOME (DoubleVal d)
+    | ConstBool b => SOME (BoolVal b)
+    | VarExpr v => (
+        case vlookup syms v
+         of SOME {sclass=(Const cval), ...} => SOME cval
+                (* {name=_, vtype=_, sclass=(Const cval)} => SOME cval *)
+          | SOME _ => NONE
+          | NONE => NONE (* don't bother throwing error here *) )
+    | NotExpr e => (
+        case evalConstExp syms e
+         of SOME (BoolVal b) => SOME (BoolVal (not b))
+          | SOME _ => NONE
+          | NONE => NONE )
+    | BoolExpr (oper, e1, e2) => ((
+        case (oper, valOf (evalConstExp syms e1), valOf (evalConstExp syms e2))
+         of (And, BoolVal b1, BoolVal b2) => SOME (BoolVal (b1 andalso b2))
+          | (Or, BoolVal b1, BoolVal b2) => SOME (BoolVal (b1 orelse b2))
+          | _ => NONE )
+                                  handle Option => NONE )
+    | CompExpr (oper, e1, e2) => ((
+        case (oper, valOf (evalConstExp syms e1), valOf (evalConstExp syms e2))
+         of (Eq, IntVal i1, IntVal i2) => SOME (BoolVal (i1 = i2))
+          | (Eq, BoolVal b1, BoolVal b2) => SOME (BoolVal (b1 = b2))
+          | (Ne, IntVal i1, IntVal i2) => SOME (BoolVal (i1 <> i2))
+          | (Ne, BoolVal b1, BoolVal b2) => SOME (BoolVal (b1 <> b2))
+          | (Gt, IntVal i1, IntVal i2) => SOME (BoolVal (i1 > i2))
+          | (Gt, DoubleVal d1, DoubleVal d2) => SOME (BoolVal (d1 > d2))
+          | (Ge, IntVal i1, IntVal i2) => SOME (BoolVal (i1 >= i2))
+          | (Ge, DoubleVal d1, DoubleVal d2) => SOME (BoolVal (d1 >= d2))
+          | (Lt, IntVal i1, IntVal i2) => SOME (BoolVal (i1 < i2))
+          | (Lt, DoubleVal d1, DoubleVal d2) => SOME (BoolVal (d1 < d2))
+          | (Le, IntVal i1, IntVal i2) => SOME (BoolVal (i1 <= i2))
+          | (Le, DoubleVal d1, DoubleVal d2) => SOME (BoolVal (d1 <= d2))
+          | _ => NONE)
+                                  handle Option => NONE )
+    | ArithExpr (oper, e1, e2) => ((
+        case (oper, valOf (evalConstExp syms e1), valOf(evalConstExp syms e2))
+         of (Plus, IntVal i1, IntVal i2) => SOME (IntVal (i1 + i2))
+          | (Plus, DoubleVal d1, DoubleVal d2) => SOME (DoubleVal (d1 + d2))
+          | (Minus, IntVal i1, IntVal i2) => SOME (IntVal (i1 - i2))
+          | (Minus, DoubleVal d1, DoubleVal d2) => SOME (DoubleVal (d1 - d2))
+          | (Times, IntVal i1, IntVal i2) => SOME (IntVal (i1 * i2))
+          | (Times, DoubleVal d1, DoubleVal d2) => SOME (DoubleVal (d1 * d2))
+          | (Div, IntVal i1, IntVal i2) => SOME (IntVal (i1 div i2))
+          | (Div, DoubleVal d1, DoubleVal d2) => SOME (DoubleVal (d1 / d2))
+          | (Mod, IntVal i1, IntVal i2) => SOME (IntVal (i1 mod i2))
+            (* watch out for precision loss. MosML defaults to 63 bits *)
+          | (Xor, IntVal i1, IntVal i2) =>
+            SOME (IntVal (Word.toInt (Word.xorb
+                                          (Word.fromInt i1, Word.fromInt i2))))
+          | (Bitand, IntVal i1, IntVal i2) =>
+            SOME (IntVal (Word.toInt (Word.andb
+                                          (Word.fromInt i1, Word.fromInt i2))))
+          | (Bitor, IntVal i1, IntVal i2) =>
+            SOME (IntVal (Word.toInt (Word.orb
+                                          (Word.fromInt i1, Word.fromInt i2))))
+          | _ => NONE )
+                                   handle Option => NONE )
+    | IfExpr (condexp, thenexp, elseexp) => (
+        case evalConstExp syms condexp
+         of SOME (BoolVal b) => if b then evalConstExp syms thenexp
+                                else evalConstExp syms elseexp
+          | _ => NONE )
+    | FunCallExpr _  => NONE (* If it's pure and the args are constants... *)
+
 
 (** Assign a type to an expression. Take expr and return (expr, msgs) *)
 fun typeexpr (decls: symtable * ftable)
@@ -407,8 +474,8 @@ fun checkproc gsyms prevfdecls (top as {fname, argdecls, rettype, pos},
   end
 
 (** must get new versions of fdefns and main, plus return errors *)
-fun checkprogram {ddecls, gdecls, fdefns, main} =
-  let val predecls = ddecls @ gdecls
+fun checkprogram {iodecls, gdecls, fdefns, main} =
+  let val predecls = iodecls @ gdecls
       (** Accumulates list of checked function definitions and errors *)
       fun checkaccum [] (accdefns: fdefn list) accerrs =
         (accdefns, (* rev *) accerrs) (* don't reverse args IN a function *)
@@ -425,7 +492,7 @@ fun checkprogram {ddecls, gdecls, fdefns, main} =
                           (newerrs @ procerrs @ accerrs) (* reverse at end *)
             end )
       val (newfdefns, errs) = checkaccum fdefns [] []
-      val newfdecls = (print "finished checking functions\n"; map #1 newfdefns)
+      val newfdecls = map #1 newfdefns
       (* main is treated separately (for now) *)
       val (newmain, mainerrs) =
           case main
@@ -445,6 +512,8 @@ fun checkprogram {ddecls, gdecls, fdefns, main} =
               end
             | NONE => (NONE, [])
   in
-      ({ddecls=ddecls, gdecls=gdecls, fdefns=newfdefns, main=newmain},
+      ({iodecls=iodecls, gdecls=gdecls, fdefns=newfdefns, main=newmain},
        errs @ mainerrs)
   end
+
+
