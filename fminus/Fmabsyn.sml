@@ -30,8 +30,10 @@ datatype arithop = Plus | Minus | Times | Div | Mod | Xor | Bitand | Bitor
 datatype boolop = And | Or
 
 (* TODO: hashtable indexed by name *)
-type symentry = { name: string, vtype: valtype, sclass: storeclass }
+type symentry = { name: string, vtype: valtype, sclass: storeclass,
+                  cval: constval option }
 
+(* TODO: Abstract datatype for symbol table *)
 type symtable = symentry list
 
 (** To give every expr a type accessible with #typ *)
@@ -48,22 +50,30 @@ datatype etree = ConstInt of int
 (* should have (etree, PROPS of {typ, pos}) pair? *)
 withtype expr = {etree: etree, typ: valtype, pos:srcpos}
 
+(** These will be deleted on analysis *)
+datatype decl =
+         VarDecl of string * valtype (* multiples desugared by parser *)
+         | ConstDecl of string * valtype * expr (* eval'ed at analysis *)
+         | IODecl of string * valtype * storeclass (* known at parse time *)
+
 (** for now, only statements can have position info--good compromise *)
-datatype stree = AssignStmt of string * expr (* Symentry ref here too?
-                                             * lvalue type? *)
-               | IfStmt of expr * sblock * sblock option
-               | WhileStmt of expr * sblock
-               | ForStmt of stmt * expr * stmt * sblock
-               | PrintStmt of expr
-               | CallStmt of expr (* string * expr list *) (* ftable ref? *)
-               | ReturnStmt of expr option
-               | BreakStmt
+datatype stree =
+         DeclStmt of decl 
+         | AssignStmt of string * expr (* Symentry ref here too?
+                                        * lvalue type? *)
+         | IfStmt of expr * sblock * sblock option
+         | WhileStmt of expr * sblock
+         | ForStmt of stmt * expr * stmt * sblock
+         | PrintStmt of expr
+         | CallStmt of expr (* string * expr list *) (* ftable ref? *)
+         | ReturnStmt of expr option
+         | BreakStmt
 withtype stmt = {stree: stree, pos: srcpos}
      and sblock = symtable * {stree: stree, pos: srcpos} list
 
 
 type fdecl = { fname: string, 
-               argdecls: symentry list,
+               argdecls: symentry list, (* hmmm *)
                rettype: valtype,
                pos: srcpos }
 
@@ -72,8 +82,8 @@ type ftable = fdecl list
 type fdefn = fdecl * sblock
 
 (* Input/output data declarations, then globals *)
-type progtext = { ddecls: symtable,
-                  gdecls: symtable, 
+type progtext = { iodecls: decl list,  (* don't have to be stmts here *)
+                  gdecls: decl list, (* addstoretype Global during anal. *)
                   fdefns: fdefn list, 
                   main: sblock option }
 
@@ -82,7 +92,7 @@ type progtext = { ddecls: symtable,
 (** Look up in variable symbol table *)
 (* TODO: replace with more efficient structure, using a memoizing 'maker' *)
 fun vlookup ([]:symtable) sym = NONE
-  | vlookup ((entry as {name, vtype, sclass})::rest) sym = 
+  | vlookup ((entry as {name, ...})::rest) sym = 
     if name = sym then SOME entry
     else vlookup rest sym
 
@@ -93,9 +103,9 @@ fun flookup ([]:ftable) name = NONE
     else flookup rest name
 
 (** Find intersection of two symbol tables. *)
-fun intersect_syms l1 [] = []
+fun intersect_syms (l1:symtable) ([]:symtable) = []
   | intersect_syms [] l2 = []
-  | intersect_syms ((entry as {name, vtype, sclass})::es) l2 =
+  | intersect_syms ((entry as {name, ...})::es) l2 =
     if isSome (vlookup l2 name)
     then entry::(intersect_syms es l2)
     else (intersect_syms es l2)
@@ -107,7 +117,7 @@ fun typestr FmInt = "int"
   | typestr FmUnit = "unit"
   | typestr Untyped = "**UNTYPED**" 
 
-                        
+            
 (** Attempt to reduce an expression to a constval *)
 (* ? Should have a separate const datatype? *)
 fun evalConstExp syms (e as {etree, typ=_, pos=_}: expr) =
@@ -117,7 +127,8 @@ fun evalConstExp syms (e as {etree, typ=_, pos=_}: expr) =
     | ConstBool b => SOME (BoolVal b)
     | VarExpr v => (
         case vlookup syms v
-         of SOME {name=_, vtype=_, sclass=(Const cval)} => SOME cval
+         of SOME {sclass=(Const cval), ...} => SOME cval
+                (* {name=_, vtype=_, sclass=(Const cval)} => SOME cval *)
           | SOME _ => NONE
           | NONE => NONE (* don't bother throwing error here *) )
     | NotExpr e => (
