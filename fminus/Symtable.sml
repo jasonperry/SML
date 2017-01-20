@@ -1,30 +1,39 @@
+signature ST_ENTRY = sig
+    type entry
+    val name : entry -> string
+end
 
-(* TODO: hashtable indexed by name *)
-type symentry = { name: string, vtype: valtype, sclass: storeclass,
-                  cval: constval option }
+(** Do I really need a signature for a symbol table? *)
+functor SymtableFn (E:ST_ENTRY) = struct
 
-(* TODO: Abstract datatype for symbol table *)
+type symentry = E.entry
+
+(* Possibly replace with binary tree or somesuch. *)
 type symtable = symentry list
 
-(*** SYMBOL TABLE FUNCTIONS ***)
+val empty: symtable = []
+
+fun insert (tab: symtable) e = e::tab
 
 (** Look up in variable symbol table *)
 (* TODO: replace with more efficient structure, using a memoizing 'maker' *)
-fun vlookup ([]:symtable) sym = NONE
-  | vlookup ((entry as {name, ...})::rest) sym = 
-    if name = sym then SOME entry
-    else vlookup rest sym
+fun lookup ([]:symtable) symname = NONE
+  | lookup (e::rest) symname = 
+    if E.name e = symname then SOME e
+    else lookup rest symname
 
 (** Look up in function name symbol table *)
-fun flookup ([]:ftable) name = NONE
+(* fun flookup ([]:ftable) name = NONE
   | flookup ((entry as {fname, argdecls, rettype, pos})::rest) name =
     if name = fname then SOME entry
-    else flookup rest name
+    else flookup rest name *)
 
 (** Find intersection of two symbol tables. *)
 fun intersect_syms (l1:symtable) ([]:symtable) = []
   | intersect_syms [] l2 = []
-  | intersect_syms ((entry as {name, ...})::es) l2 =
-    if isSome (vlookup l2 name)
-    then entry::(intersect_syms es l2)
-    else (intersect_syms es l2)
+  | intersect_syms (e::rest) l2 =
+    if isSome (lookup l2 (E.name e))
+    then e::(intersect_syms rest l2)
+    else (intersect_syms rest l2)
+
+end

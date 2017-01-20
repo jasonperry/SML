@@ -5,11 +5,13 @@
 type srcpos = Location.Location
 type errormsg = string * srcpos
 
-(** These are data that will be inserted in symbol tables too. *) 
+(** TYPE AND SYMBOL TABLE DECLARATIONS *)
+
 (* Some subtyping? Eq, Ord, Num, *)
 datatype valtype = FmInt | FmDouble | FmBool | FmUnit | Untyped
                    (* | FmArray of valtype * int *)
 
+(* What will I do when I want enumerated constants? Tags? *)
 datatype constval = IntVal of int
                   | DoubleVal of real
                   | BoolVal of bool
@@ -22,16 +24,41 @@ datatype storeclass = Indata
                     | Arg
                     | Const of constval (* just keep value here *)
 
+type symentry = { name: string, vtype: valtype, sclass: storeclass,
+                 cval: constval option }
+
+(* Think we don't want opaque here. still want to use symentry on our own. *)
+structure StEntry : ST_ENTRY = struct
+    type entry = symentry
+    fun name e = #name e
+end
+
+structure Symtable = SymtableFn (StEntry)
+
+type fdecl = { fname: string, 
+               argdecls: symentry list, (* hmmm *)
+               rettype: valtype,
+               pos: srcpos }
+
+structure FtEntry : ST_ENTRY = struct
+    type entry = fdecl
+    fun name e = #fname e
+end
+
+structure Funtable = SymtableFn (FtEntry)
+
+(** EXPRESSION TREE SECTION **)
+
 datatype relop = Eq | Ne | Gt | Ge | Lt | Le
 (* TODO: bitwise not, shifts *)
 datatype arithop = Plus | Minus | Times | Div | Mod | Xor | Bitand | Bitor
 datatype boolop = And | Or
 
 (** To give every expr a type accessible with #typ *)
-datatype etree = ConstInt of int
-               | ConstDouble of real
-               | ConstBool of bool
-               | VarExpr of string (* later: symentry ref? *)
+datatype etree = ConstExpr of constval
+(*               | ConstDouble of real
+               | ConstBool of bool *)
+               | VarExpr of string (* later: symentry ref? Nah. *)
                | NotExpr of expr
                | BoolExpr of boolop * expr * expr
                | CompExpr of relop * expr * expr
@@ -61,23 +88,18 @@ datatype stree =
 withtype stmt = {stree: stree, pos: srcpos}
      and sblock = (* symtable **) {stree: stree, pos: srcpos} list
 
-
-type fdecl = { fname: string, 
-               argdecls: symentry list, (* hmmm *)
-               rettype: valtype,
-               pos: srcpos }
-
-type ftable = fdecl list
+type ftable = Funtable.symtable (* fdecl list *)
 
 type fdefn = fdecl * sblock
 
 (* Input/output data declarations, then globals *)
 type progtext = { iodecls: decl list,  (* don't have to be stmts here *)
                   gdecls: decl list, (* addstoretype Global during anal. *)
-                  fdefns: fdefn list, 
+                  fdefns: fdefn list,
+                  gsyms: Symtable.symtable,
                   main: sblock option }
 
-                                
+   
 (* Strings for types, for use in type checker messages *)
 fun typestr FmInt = "int"
   | typestr FmDouble = "double"
