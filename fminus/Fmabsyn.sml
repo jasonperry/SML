@@ -33,6 +33,7 @@ structure StEntry : ST_ENTRY = struct
     fun name e = #name e
 end
 
+(* Note: SymtableFn must be visible (toplevel mode) *)
 structure Symtable = SymtableFn (StEntry)
 
 type fdecl = { fname: string, 
@@ -88,7 +89,7 @@ datatype stree =
 withtype stmt = {stree: stree, pos: srcpos}
      and sblock = (* symtable **) {stree: stree, pos: srcpos} list
 
-type ftable = Funtable.symtable (* fdecl list *)
+(* type ftable = Funtable.symtable (* fdecl list *) *)
 
 type fdefn = fdecl * sblock
 
@@ -97,6 +98,7 @@ type progtext = { iodecls: decl list,  (* don't have to be stmts here *)
                   gdecls: decl list, (* addstoretype Global during anal. *)
                   fdefns: fdefn list,
                   gsyms: Symtable.symtable,
+                  fsyms: Funtable.symtable,
                   main: sblock option }
 
    

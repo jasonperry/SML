@@ -1,10 +1,21 @@
+(* These could go in a .sig file, but not with mosml *)
+signature SYMTABLE = sig
+    type symentry
+    type symtable
+
+    val empty: symtable
+    val insert: symtable -> symentry -> symtable
+    val lookup: symtable -> string -> symentry option
+    val intersect: symtable -> symtable -> symtable
+end
+
 signature ST_ENTRY = sig
     type entry
     val name : entry -> string
 end
 
 (** Do I really need a signature for a symbol table? *)
-functor SymtableFn (E:ST_ENTRY) = struct
+functor SymtableFn (E:ST_ENTRY) : SYMTABLE = struct
 
 type symentry = E.entry
 
@@ -29,11 +40,11 @@ fun lookup ([]:symtable) symname = NONE
     else flookup rest name *)
 
 (** Find intersection of two symbol tables. *)
-fun intersect_syms (l1:symtable) ([]:symtable) = []
-  | intersect_syms [] l2 = []
-  | intersect_syms (e::rest) l2 =
+fun intersect (l1:symtable) ([]:symtable) = []
+  | intersect [] l2 = []
+  | intersect (e::rest) l2 =
     if isSome (lookup l2 (E.name e))
-    then e::(intersect_syms rest l2)
-    else (intersect_syms rest l2)
+    then e::(intersect rest l2)
+    else (intersect rest l2)
 
 end

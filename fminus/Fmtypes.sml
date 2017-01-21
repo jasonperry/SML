@@ -1,7 +1,7 @@
 (* Semantic analysis functions, including typechecking *)
 
 open Fmabsyn;
-open Symtable;
+(* open Symtable; *)
 
 (* should check decls and types in different fns? *)
 
