@@ -3,10 +3,11 @@
 open Fmabsyn;
 
 (** Add a single storage type to every entry of a var list,
-  * making it a symbol table *)
+  * and make it a list of symtable entries *)
 fun addstoretype _ [] = []
   | addstoretype sclass ((name, vtype)::ents) = 
-    {name=name, vtype=vtype, sclass=sclass}::(addstoretype sclass ents)
+    {name=name, vtype=vtype, sclass=sclass,
+     cval=NONE}::(addstoretype sclass ents)
 ;
 (*
 fun mkintop2 opr (Int n1, Int n2)  = Int (opr (n1, n2))
@@ -48,20 +49,20 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %type <Fmabsyn.progtext> Main Ptext
 %type <Fmabsyn.decl list> IOdecls Vdecls Vdecl
 %type <Fmabsyn.decl> IOdecl ConstDecl
-/* %type <(string * Fmabsyn.valtype) list> Vdecls Vdecl  */
+/* %type <(string * valtype) list> Vdecls Vdecl  */
 %type <string list> Varlist
 %type <Fmabsyn.fdefn list> Fdefns 
 /* %type <(Fmabsyn.symtable * Fmabsyn.stmt list)> Sblock */
 %type <(Fmabsyn.stmt list)> Sblock
-%type <(string * Fmabsyn.valtype) list>  Params 
+%type <(string * valtype) list>  Params 
 %type <Fmabsyn.expr list> Args
-%type <(string * Fmabsyn.valtype)> Param
+%type <(string * valtype)> Param
 %type <Fmabsyn.fdefn> Fdefn
 %type <Fmabsyn.stmt list> Stmts
 %type <Fmabsyn.stmt> Stmt LineStmt BlockStmt
 %type <Fmabsyn.stmt> DeclStmt AssnStmt IfStmt WhileStmt PrintStmt CallStmt
 %type <Fmabsyn.stmt> ReturnStmt BreakStmt ForStmt
-%type <Fmabsyn.valtype> Typeexp Ftype 
+%type <valtype> Typeexp Ftype 
 %type <Fmabsyn.expr> Expr VarExpr RelExpr AssocExpr
 %%
 
@@ -84,11 +85,13 @@ Ptext:
                                             gdecls=$2, 
                                             fdefns=$3,
                                             gsyms = Symtable.empty,
+                                            fsyms = Funtable.empty,
                                             main=NONE} }
   | IOdecls Vdecls Fdefns MAIN Sblock    { {iodecls=$1,
                                             gdecls=$2, 
                                             fdefns=$3,
                                             gsyms = Symtable.empty,
+                                            fsyms = Funtable.empty,
                                             main=(SOME $5)} }
 ;
 IOdecls:
@@ -164,8 +167,10 @@ LineStmt:
   | BreakStmt                           { $1 }
 ;
 DeclStmt: /* Now decls can be anywhere in a block. */
-    Vdecl                               { DeclStmt $1 }
-  | ConstDecl                           { DeclStmt $1 }
+    Vdecl                               { {stree=DeclStmt $1,
+                                           pos=Location.getCurrentLocation()} }
+  | ConstDecl                           { {stree=DeclStmt [$1],
+                                           pos=Location.getCurrentLocation()} }
 ;
 BlockStmt:
     ForStmt                             { $1 }
@@ -261,13 +266,17 @@ RelExpr:
                                            pos=Location.getCurrentLocation()} }
 ;
 AssocExpr:
-    INT                                 { {etree=ConstInt $1, typ=Untyped,
+    INT                                 { {etree=ConstExpr (IntVal $1),
+                                           typ=Untyped,
                                            pos=Location.getCurrentLocation()} }
-  | DOUBLE                              { {etree=ConstDouble $1, typ=Untyped,
+  | DOUBLE                              { {etree=ConstExpr (DoubleVal $1),
+                                           typ=Untyped,
                                            pos=Location.getCurrentLocation()} }
-  | TRUE                                { {etree=ConstBool true, typ=Untyped,
+  | TRUE                                { {etree=ConstExpr (BoolVal true),
+                                           typ=Untyped,
                                            pos=Location.getCurrentLocation()} }
-  | FALSE                               { {etree=ConstBool false, typ=Untyped,
+  | FALSE                               { {etree=ConstExpr (BoolVal false),
+                                           typ=Untyped,
                                            pos=Location.getCurrentLocation()} }
   | VarExpr                             { $1 }
   | IF LPAR AssocExpr RPAR THEN AssocExpr ELSE AssocExpr

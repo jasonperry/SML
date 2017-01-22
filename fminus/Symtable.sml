@@ -1,4 +1,49 @@
 (* These could go in a .sig file, but not with mosml *)
+
+(* Possibly all this stuff in a file named "FmDefs" that everything depends
+ * on. *)
+type srcpos = Location.Location
+type errormsg = string * srcpos
+
+(** TYPE AND SYMBOL TABLE DECLARATIONS *)
+(* Some subtyping? Eq, Ord, Num, *)
+datatype valtype = FmInt | FmDouble | FmBool | FmUnit | Untyped
+                   (* | FmArray of valtype * int *)
+(* Strings for types, for use in type checker messages *)
+fun typestr FmInt = "int"
+  | typestr FmDouble = "double"
+  | typestr FmBool = "bool"
+  | typestr FmUnit = "unit"
+  | typestr Untyped = "**UNTYPED**" 
+
+(* What will I do when I want enumerated constants? Tags? *)
+datatype constval = IntVal of int
+                  | DoubleVal of real
+                  | BoolVal of bool
+
+(* TODO: add index type *)
+datatype storeclass = Indata
+                    | Outdata
+                    | Global
+                    | Local
+                    | Arg
+                    | Const of constval (* just keep value here *)
+
+type symentry = { name: string, vtype: valtype, sclass: storeclass,
+                 cval: constval option }
+
+signature ST_ENTRY = sig
+    type entry
+    val name : entry -> string
+end
+
+                  
+(* Think we don't want opaque here. still want to use symentry on our own. *)
+structure StEntry : ST_ENTRY = struct
+    type entry = symentry
+    fun name e = #name e
+end
+
 signature SYMTABLE = sig
     type symentry
     type symtable
@@ -7,11 +52,6 @@ signature SYMTABLE = sig
     val insert: symtable -> symentry -> symtable
     val lookup: symtable -> string -> symentry option
     val intersect: symtable -> symtable -> symtable
-end
-
-signature ST_ENTRY = sig
-    type entry
-    val name : entry -> string
 end
 
 (** Do I really need a signature for a symbol table? *)
@@ -48,3 +88,19 @@ fun intersect (l1:symtable) ([]:symtable) = []
     else (intersect rest l2)
 
 end
+
+
+(* Note: SymtableFn must be visible (toplevel mode) *)
+structure Symtable = SymtableFn (StEntry)
+
+type fdecl = { fname: string, 
+               argdecls: symentry list, (* because know everything now? *)
+               rettype: valtype,
+               pos: srcpos }
+
+structure FtEntry : ST_ENTRY = struct
+    type entry = fdecl
+    fun name e = #fname e
+end
+
+structure Funtable = SymtableFn (FtEntry)

@@ -10,11 +10,9 @@ open Fmabsyn;
 (** Attempt to reduce an expression to a constval *)
 fun evalConstExp syms (e as {etree, typ=_, pos=_}: expr) =
   case etree
-   of ConstInt n => SOME (IntVal n)
-    | ConstDouble d => SOME (DoubleVal d)
-    | ConstBool b => SOME (BoolVal b)
+   of ConstExpr ce => SOME ce
     | VarExpr v => (
-        case vlookup syms v
+        case Symtable.lookup syms v
          of SOME {sclass=(Const cval), ...} => SOME cval
                 (* {name=_, vtype=_, sclass=(Const cval)} => SOME cval *)
           | SOME _ => NONE
@@ -78,15 +76,15 @@ fun evalConstExp syms (e as {etree, typ=_, pos=_}: expr) =
 
 
 (** Assign a type to an expression. Take expr and return (expr, msgs) *)
-fun typeexpr (decls: symtable * ftable)
-             {etree=ConstInt i, typ=_, pos} : expr * errormsg list =
-    ({etree=ConstInt i, typ=FmInt, pos=pos}, [])
-  | typeexpr _ {etree=ConstDouble d, typ=_, pos} =
-    ({etree=ConstDouble d, typ=FmDouble, pos=pos}, [])
-  | typeexpr _ {etree=ConstBool b, typ=_, pos} =
-    ({etree=ConstBool b, typ=FmBool, pos=pos}, [])
+fun typeexpr (decls: Symtable.symtable * Funtable.symtable)
+             {etree=ConstExpr (IntVal i), typ=_, pos} : expr * errormsg list =
+    ({etree=ConstExpr (IntVal i), typ=FmInt, pos=pos}, [])
+  | typeexpr _ {etree=ConstExpr (DoubleVal d), typ=_, pos} =
+    ({etree=ConstExpr (DoubleVal d), typ=FmDouble, pos=pos}, [])
+  | typeexpr _ {etree=ConstExpr (BoolVal b), typ=_, pos} =
+    ({etree=ConstExpr (BoolVal b), typ=FmBool, pos=pos}, [])
   | typeexpr (vsyms, _) (e as {etree=VarExpr var, typ=_, pos}) = (
-    case (vlookup vsyms var)
+    case (Symtable.lookup vsyms var)
      of SOME entry => ({etree=VarExpr var, typ=(#vtype entry), pos=pos}, [])
      |  NONE => (e, [("Undefined variable: " ^ var, pos)]) )
   | typeexpr decls {etree=NotExpr e1, typ=_, pos} = (
@@ -190,7 +188,7 @@ fun typeexpr (decls: symtable * ftable)
                                    ^ (typestr vtype) ^ ", " 
                                    ^ (typestr atype), pos) :: (matchargs ps args)
           val (typ, msgs) =
-              case flookup fdecls fname 
+              case Funtable.lookup fdecls fname 
                of NONE => (Untyped, [("Unrecognized function name: "
                                       ^ fname, pos)])
                |  SOME {fname, argdecls, rettype, pos} =>
@@ -363,9 +361,7 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
     (* This could go outside, doesn't close over anything. *)
     let fun usedvars expr = (
           case (#etree expr) of
-              ConstInt _ => []
-            | ConstDouble _ => []
-            | ConstBool _ => []
+              ConstExpr _ => []
             | VarExpr vname => [vname]
             | NotExpr e => usedvars e
             | BoolExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
@@ -515,5 +511,3 @@ fun checkprogram {iodecls, gdecls, fdefns, main} =
       ({iodecls=iodecls, gdecls=gdecls, fdefns=newfdefns, main=newmain},
        errs @ mainerrs)
   end
-
-
