@@ -2,6 +2,8 @@
 (* Put util functions here. *)
 open Fmabsyn;
 
+structure Loc = Location;
+
 (** Add a single storage type to every entry of a var list,
   * and make it a list of symtable entries *)
 fun addstoretype _ [] = []
@@ -99,8 +101,10 @@ IOdecls:
   | IOdecl SEMI IOdecls                  { $1 :: $3 }
 ;         
 IOdecl:
-    INDATA NAME COLON Typeexp           { IODecl ($2, $4, Indata) }
-  | OUTDATA NAME COLON Typeexp          { IODecl ($2, $4, Outdata) }
+    INDATA NAME COLON Typeexp           { IODecl ($2, $4, Indata,
+                                                  Loc.getCurrentLocation()) }
+  | OUTDATA NAME COLON Typeexp          { IODecl ($2, $4, Outdata,
+                                                  Loc.getCurrentLocation()) }
 ;
 Vdecls:
     /* empty */                         { [] }
@@ -108,11 +112,14 @@ Vdecls:
   | ConstDecl SEMI Vdecls               { $1::$3 }
 ;
 Vdecl: 
-    VAR Varlist COLON Typeexp           { map (fn v => VarDecl (v, $4)) $2 }
+    VAR Varlist COLON Typeexp           { map (fn v => VarDecl (v, $4,
+                                               Loc.getCurrentLocation()))
+                                              $2 }
 ;
 ConstDecl:
     CONST NAME COLON Typeexp ASSIGN Expr
-                                        { ConstDecl ($2, $4, $6) }
+                                        { ConstDecl ($2, $4, $6,
+                                                     Loc.getCurrentLocation()) }
 ;
 Varlist:
     NAME                                { [$1] }

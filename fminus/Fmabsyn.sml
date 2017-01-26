@@ -22,12 +22,12 @@ datatype etree = ConstExpr of constval
 (* should have (etree, PROPS of {typ, pos}) pair? *)
 withtype expr = {etree: etree, typ: valtype, pos:srcpos}
 
-datatype decl =
-         VarDecl of string * valtype (* multiples desugared by parser *)
-         | ConstDecl of string * valtype * expr (* eval'ed at analysis *)
-         | IODecl of string * valtype * storeclass (* known at parse time *)
+datatype decltype = VarDecl | ConstDecl of expr | IODecl of storeclass
+type decl = {name: string, vtype: valtype, pos: srcpos, dtype: decltype}
+         (* multiples broken by parser *)
+         (* expr eval'ed at analysis *)
+         (* storeclass read at parse time: Indata or Outdata *)
 
-(** for now, only statements can have position info--good compromise *)
 datatype stree = 
          DeclStmt of decl list (* These will be deleted on analysis *)
          | AssignStmt of string * expr (* Symentry ref here too?
@@ -48,10 +48,10 @@ type fdefn = fdecl * sblock
 
 (* Input/output data declarations, then globals *)
 type progtext = { iodecls: decl list,  (* don't have to be stmts here *)
-                  gdecls: decl list, (* addstoretype Global during anal. *)
+                  gdecls: decl list, (* addstoretype Global during analysis *)
                   fdefns: fdefn list,
                   gsyms: Symtable.symtable,
                   fsyms: Funtable.symtable,
                   main: sblock option }
-   
+
 (* end *)

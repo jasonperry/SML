@@ -1,6 +1,7 @@
 (* Semantic analysis functions, including typechecking *)
 
 open Fmabsyn;
+open Either;
 (* open Symtable; *)
 
 (* should check decls and types in different fns? *)
@@ -13,7 +14,7 @@ fun evalConstExp syms (e as {etree, typ=_, pos=_}: expr) =
    of ConstExpr ce => SOME ce
     | VarExpr v => (
         case Symtable.lookup syms v
-         of SOME {sclass=(Const cval), ...} => SOME cval
+         of SOME {sclass=Const, cval=SOME cval, ...} => SOME cval
                 (* {name=_, vtype=_, sclass=(Const cval)} => SOME cval *)
           | SOME _ => NONE
           | NONE => NONE (* don't bother throwing error here *) )
@@ -186,7 +187,7 @@ fun typeexpr (decls: Symtable.symtable * Funtable.symtable)
                              then matchargs ps args
                              else ("Non-matching argument types: "  
                                    ^ (typestr vtype) ^ ", " 
-                                   ^ (typestr atype), pos) :: (matchargs ps args)
+                                   ^ (typestr atype), pos)::(matchargs ps args)
           val (typ, msgs) =
               case Funtable.lookup fdecls fname 
                of NONE => (Untyped, [("Unrecognized function name: "
@@ -469,14 +470,61 @@ fun checkproc gsyms prevfdecls (top as {fname, argdecls, rettype, pos},
                     ^ ": " ::*) (errs @ returnerr @ initerrs @ breakerrs))
   end
 
+(** Create symtable entry for single declaration, or error *)
+(* is it supposed to add to syms? Then would a plain-old fold work? *)
+fun addDecl sclass ({name, vtype, pos, dtype}:decl) syms =
+  if isSome (Symtable.lookup syms name)
+  then ERR ("Redeclaration of " ^ name, pos)
+  else (
+      case dtype
+       of VarDecl =>
+          VAL (Symtable.insert syms {name=name, vtype=vtype,
+                                     sclass=sclass, cval=NONE})
+       | ConstDecl expr => (
+           case evalConstExp accsyms expr
+            of NONE =>
+               ERR ("Non-constant initializer for " ^ name, pos)
+             | SOME (IntVal v) => 
+               if vtype = FmInt
+               then
+                   VAL (Symtable.insert syms
+                                        {name=name, vtype=vtype,
+                                         sclass=Const, cval=SOME (IntVal v)})
+               else ERR ("Const initializer type mismatch for " ^ name ^
+                         ": declared as " ^ (typestr vtype) ^
+                         ", initializer is int", pos)
+             | SOME (DoubleVal v) => 
+               if vtype = FmDouble
+               then
+                   VAL (Symtable.insert syms
+                                        {name=name, vtype=vtype, sclass=Const,
+                                         cval=SOME (DoubleVal v)})
+               else ERR ("Const initializer type mismatch for " ^ name ^
+                         ": declared as " ^ (typestr vtype) ^
+                         ", initializer is double", pos)
+             | SOME (BoolVal v) => 
+               if vtype = FmBool
+               then VAL (Symtable.insert syms
+                                         {name=name, vtype=vtype,sclass=Const,
+                                          cval=SOME (BoolVal v)})
+               else ERR ("Const initializer type mismatch for " ^ name ^
+                         ": declared as " ^ (typestr vtype) ^
+                         ", initializer is bool", pos))
+       | IODecl sclass => VAL (Symtable.insert
+                                   syms
+                                   {name=name, vtype=vtype,
+                                    sclass=sclass, cval=NONE})
+  )
+      
 (** must get new versions of fdefns and main, plus return errors *)
-fun checkprogram {iodecls, gdecls, fdefns, main} =
+fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
+  (* raise if symtables not empty? *)
   let val predecls = iodecls @ gdecls
       (** Accumulates list of checked function definitions and errors *)
       fun checkaccum [] (accdefns: fdefn list) accerrs =
         (accdefns, (* rev *) accerrs) (* don't reverse args IN a function *)
         | checkaccum ((fdefn as (fdecl, fbody)) :: frest) accdefns accerrs = (
-            let val accdecls = map #1 accdefns
+            let (* val accdecls = map #1 accdefns *)
                 val newerrs =
                     if isSome (flookup accdecls (#fname fdecl))
                     then [("*** Error: function redeclaration: "
