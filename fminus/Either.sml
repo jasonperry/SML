@@ -14,10 +14,12 @@ fun unzipEither elist =
   end;
 
 (** Folds in vals to a val, returns list of errs *)
-fun foldEither f b0 alist =
+fun foldEither (f: 'a -> 'b -> ('b, 'e) either) b0 alist =
   let fun fe' b [] errs = (b, rev errs)
-        | fe' b ((VAL a)::rest) errs = fe' (f a b) rest errs
-        | fe' b ((ERR e)::rest) errs = fe' b rest (e::errs)
+        | fe' b (a::rest) errs =
+          case (f a b)
+           of VAL newb => fe' newb rest errs
+            | ERR e => fe' b rest (e::errs)
   in fe' b0 alist []
   end
 end

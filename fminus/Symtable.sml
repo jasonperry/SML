@@ -12,6 +12,7 @@ signature SYMTABLE = sig
     val maketable: symentry list -> symtable (* necessary? *)
     val insert: symtable -> symentry -> symtable
     val lookup: symtable -> string -> symentry option
+    val merge: symtable -> symtable -> symtable
     val intersect: symtable -> symtable -> symtable
 end
 
@@ -26,7 +27,7 @@ type symtable = symentry list
 val empty: symtable = []
 
 fun maketable symlist = symlist
-                          
+
 fun insert (tab: symtable) e = e::tab
 
 (** Look up in variable symbol table *)
@@ -42,6 +43,8 @@ fun lookup ([]:symtable) symname = NONE
     if name = fname then SOME entry
     else flookup rest name *)
 
+fun merge (t1:symtable) (t2:symtable) = t1 @ t2
+
 (** Find intersection of two symbol tables. *)
 fun intersect (l1:symtable) ([]:symtable) = []
   | intersect [] l2 = []
@@ -51,57 +54,3 @@ fun intersect (l1:symtable) ([]:symtable) = []
     else (intersect rest l2)
 
 end
-
-(* Possibly all this stuff in a file named "FmDefs" that everything depends
- * on. *)
-type srcpos = Location.Location
-type errormsg = string * srcpos
-
-(** TYPE AND SYMBOL TABLE DECLARATIONS *)
-(* Some subtyping? Eq, Ord, Num, *)
-datatype valtype = FmInt | FmDouble | FmBool | FmUnit | Untyped
-                   (* | FmArray of valtype * int *)
-(* Strings for types, for use in type checker messages *)
-fun typestr FmInt = "int"
-  | typestr FmDouble = "double"
-  | typestr FmBool = "bool"
-  | typestr FmUnit = "unit"
-  | typestr Untyped = "**UNTYPED**" 
-
-(* What will I do when I want enumerated constants? Tags? *)
-datatype constval = IntVal of int
-                  | DoubleVal of real
-                  | BoolVal of bool
-
-(* TODO: add index type *)
-datatype storeclass = Indata
-                    | Outdata
-                    | Global
-                    | Local
-                    | Arg
-                    | Const (* DON'T keep value here *)
-
-type symentry = { name: string, vtype: valtype, sclass: storeclass,
-                 cval: constval option }
-
-                  
-(* Think we don't want opaque here. still want to use symentry on our own. *)
-structure StEntry : ST_ENTRY = struct
-    type entry = symentry
-    fun name e = #name e
-end
-
-(* Note: SymtableFn must be visible (toplevel mode) *)
-structure Symtable = SymtableFn (StEntry)
-
-type fdecl = { fname: string, 
-               argdecls: symentry list, (* because know everything now? *)
-               rettype: valtype,
-               pos: srcpos }
-
-structure FtEntry : ST_ENTRY = struct
-    type entry = fdecl
-    fun name e = #fname e
-end
-
-structure Funtable = SymtableFn (FtEntry)

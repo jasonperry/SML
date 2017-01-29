@@ -178,7 +178,7 @@ fun typeexpr (decls: Symtable.symtable * Funtable.symtable)
       let fun matchargs [] [] = [] 
             | matchargs (p::ps) [] = [("Not enough arguments to " ^ fname, pos)]
             | matchargs [] (p::ps) = [("Too many arguments to " ^ fname, pos)]
-            | matchargs ({name, vtype, sclass}::ps) (arg::args) = 
+            | matchargs ({name, vtype, sclass, cval}::ps) (arg::args) = 
               case typeexpr decls arg
                of ({etree=_, typ=Untyped, pos=apos}, msgs) =>
                   msgs @ (matchargs ps args) (* Keep going *)
@@ -196,10 +196,53 @@ fun typeexpr (decls: Symtable.symtable * Funtable.symtable)
                   case matchargs argdecls fnargs
                   (* issue: testing success based on no msgs (see above) *)
                    of [] => (rettype, []) 
-                    | errs => (Untyped, errs)
+                    | funerrs => (Untyped, funerrs)
       in ({etree=FunCallExpr (fname, fnargs), typ=typ, pos=pos}, msgs)
       end )
 
+(** Add a declaration to a local symtable, or return error *)
+fun addDecl (sclass: storeclass) ({name, vtype, pos, dtype}:decl) syms =
+  if isSome (Symtable.lookup syms name)
+  then ERR ("Redeclaration of " ^ name, pos)
+  else (
+      case dtype
+       of VarDecl =>
+          VAL (Symtable.insert syms {name=name, vtype=vtype,
+                                     sclass=sclass, cval=NONE})
+       | ConstDecl expr => (
+           case evalConstExp syms expr
+            of NONE =>
+               ERR ("Non-constant initializer for " ^ name, pos)
+             | SOME (IntVal v) => 
+               if vtype = FmInt
+               then VAL (Symtable.insert syms
+                                         {name=name, vtype=vtype,
+                                          sclass=Const, cval=SOME (IntVal v)})
+               else ERR ("Const initializer type mismatch for " ^ name ^
+                         ": declared as " ^ (typestr vtype) ^
+                         ", initializer is int", pos)
+             | SOME (DoubleVal v) => 
+               if vtype = FmDouble
+               then VAL (Symtable.insert syms
+                                         {name=name, vtype=vtype, sclass=Const,
+                                          cval=SOME (DoubleVal v)})
+               else ERR ("Const initializer type mismatch for " ^ name ^
+                         ": declared as " ^ (typestr vtype) ^
+                         ", initializer is double", pos)
+             | SOME (BoolVal v) => 
+               if vtype = FmBool
+               then VAL (Symtable.insert syms
+                                         {name=name, vtype=vtype,sclass=Const,
+                                          cval=SOME (BoolVal v)})
+               else ERR ("Const initializer type mismatch for " ^ name ^
+                         ": declared as " ^ (typestr vtype) ^
+                         ", initializer is bool", pos))
+       | IODecl sclass => VAL (Symtable.insert
+                                   syms
+                                   {name=name, vtype=vtype,
+                                    sclass=sclass, cval=NONE})
+  )
+                                                           
 (** Check that all statements in a list are reachable. *) 
 fun checkreachable ([]: stmt list) = []
   | checkreachable (stmt::[]) = [] 
@@ -223,38 +266,50 @@ fun checkbreak [] = []
       | _ => checkbreak stmts
 
 
-(** Typecheck single statement, returning list of errors *)
+(** Typecheck single statement, returning new statement and list of errors,
+  *  and now a list of symbols *)
 (* Only take most local matching name. If type doesn't match, then error. *)
-(* vsyms has both local and global symbols *)
-fun checkstmt (vsyms: symtable) adecls fdecls
+fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
+  let val (newsyms, errs) = foldEither (addDecl Local)
+                                       (locsyms: Symtable.symtable)
+                                       (dlist: decl list)
+  in ({stree=DeclStmt [], pos=pos}, errs, newsyms) (* Empty it out! *)
+  end
+  | checkstmt outsyms locsyms fsyms 
               {stree=AssignStmt (var, expr), pos} = (
     let val (checkedexpr as {etree=_, typ=etype, pos=pos1}, msgs) =
-            typeexpr (vsyms @ adecls, fdecls) expr
+            typeexpr (Symtable.merge locsyms outsyms, fsyms) expr
+        val entry = if isSome (Symtable.lookup locsyms var) then
+                        Symtable.lookup locsyms var
+                    else Symtable.lookup outsyms var
         val newerrs = 
-            case vlookup vsyms var 
-             of SOME entry => ( 
-                 if etype <> (#vtype entry)
-                 then [("Assignment type mismatch: " ^ (typestr (#vtype entry))
-                        ^ ", " ^ (typestr etype), pos)]
-                 else (* if (#sclass entry) = Const error *)[] )
-              | NONE => (case vlookup adecls var
-                          of NONE => [("Assignment to undefined variable: "
-                                       ^ var, pos)]
-                           | SOME _ => [("Assignment to argument "
-                                         ^ var ^ " not allowed", pos)] )
-    in ({stree=AssignStmt (var, checkedexpr), pos=pos}, newerrs @ msgs)
+            case entry
+             of SOME e => ( 
+                 if etype <> (#vtype e) then
+                     [("Assignment type mismatch: " ^ (typestr (#vtype e))
+                       ^ ", " ^ (typestr etype), pos)]
+                 else if (#sclass e) = Const then
+                     [("Assignment to const: " ^ var, pos)]
+                 else if (#sclass e) = Arg then
+                     [("Assignment to argument: " ^ var, pos)] 
+                 else [] )
+              | NONE => [("Assignment to undefined variable: " ^ var, pos)]
+    in ({stree=AssignStmt (var, checkedexpr), pos=pos}, newerrs @ msgs,
+        locsyms)
     end )
 
-  | checkstmt vsyms argsyms fdecls 
+  | checkstmt outsyms locsyms fsyms 
               {stree=IfStmt (cond, thenblock, elsblock), pos} = (
       let val (checkedcond as {etree=_, typ=ctype, pos=pos1}, msgs1) =
-              typeexpr (vsyms @ argsyms, fdecls) cond
+              typeexpr (Symtable.merge locsyms outsyms, fsyms) cond
           val (checkedthen, msgs2) =
-              checkblock vsyms argsyms fdecls thenblock
+              checkblock (Symtable.merge outsyms locsyms) fsyms thenblock
           val (checkedelse, msgs3) = (
               case elsblock 
-               of SOME sblock => (* A very monadic threading operation *)
-                  let val (res, msgs) = checkblock vsyms argsyms fdecls sblock
+               of SOME sblock => 
+                  let val (res, msgs) =
+                          checkblock (Symtable.merge outsyms locsyms)
+                                     fsyms sblock
                   in (SOME res, msgs)
                   end               
                 | NONE => (elsblock, []) )
@@ -262,97 +317,126 @@ fun checkstmt (vsyms: symtable) adecls fdecls
                        then [("Non-Boolean condition in if statement", pos)]
                        else []
       in ({stree=IfStmt (checkedcond, checkedthen, checkedelse), pos=pos},
-          newerrs @ msgs1 @ msgs2 @ msgs3)
+          newerrs @ msgs1 @ msgs2 @ msgs3,
+          locsyms) (* syms in then/else blocks not exported *)
       end )
 
-  | checkstmt vsyms argsyms fdecls
+  | checkstmt outsyms locsyms fsyms
               {stree=WhileStmt (cond, bblock), pos} = (
       let val (checkedcond as {etree=_, typ=ctype, pos=pos1}, msgs1) =
-              typeexpr (vsyms @ argsyms, fdecls) cond
-          val (checkedbody, msgs2) = checkblock vsyms argsyms fdecls bblock 
+              typeexpr (Symtable.merge locsyms outsyms, fsyms) cond
+          val (checkedbody, msgs2) =
+              checkblock (Symtable.merge outsyms locsyms) fsyms bblock 
           val newerrs = if ctype <> FmBool
                        then [("Non-Boolean condition in while statement: type "
                               ^ (typestr ctype), pos)]
                        else []
       in ({stree=WhileStmt (checkedcond, checkedbody), pos=pos},
-          newerrs @ msgs1 @ msgs2)
+          newerrs @ msgs1 @ msgs2, locsyms)
       end )
 
-  | checkstmt vsyms argsyms fdecls
+  | checkstmt outsyms locsyms fsyms
               {stree=ForStmt (initstmt, cond, updatestmt, bblock), pos} = (
       (* If I want to allow new vardecls in the initstmt, change here *)
-      let val (checkedinit, msgs1) = checkstmt vsyms argsyms fdecls initstmt
+      let val (checkedinit, msgs1, locsyms2) = (* new symbols allowed! *)
+              checkstmt outsyms locsyms fsyms initstmt
           val (checkedcond as {etree=_, typ=ctype, pos=cpos}, msgs2) =
-              typeexpr (vsyms @ argsyms, fdecls) cond
-          val (checkedupd, msgs3) = checkstmt vsyms argsyms fdecls updatestmt
-          val (checkedbody, msgs4) = checkblock vsyms argsyms fdecls bblock 
+              typeexpr (Symtable.merge locsyms2 outsyms, fsyms) cond
+          val (checkedupd, msgs3, locsyms3) =
+              checkstmt outsyms locsyms2 fsyms updatestmt
+          val (checkedbody, msgs4) =
+              checkblock (Symtable.merge outsyms locsyms3) fsyms bblock 
           val newerrs = if ctype <> FmBool
                        then [("Non-Boolean condition in 'for' statement: "
                               ^ (typestr ctype), pos)]
                        else []
       in ({stree=ForStmt (checkedinit, checkedcond, checkedupd, checkedbody),
-           pos=pos}, newerrs @ msgs1 @ msgs2 @ msgs3 @ msgs4)
+           pos=pos}, newerrs @ msgs1 @ msgs2 @ msgs3 @ msgs4,
+          locsyms) (* discard locsyms2,3,4 *)
       end )
 
-  | checkstmt vsyms argsyms fdecls
+  | checkstmt outsyms locsyms fsyms
               {stree=PrintStmt expr, pos} = (
-      let val (checkedexpr, msgs) = typeexpr (vsyms @ argsyms, fdecls) expr
+      let val (checkedexpr, msgs) =
+              typeexpr (Symtable.merge locsyms outsyms, fsyms) expr
       in
-          ({stree=PrintStmt checkedexpr, pos=pos}, msgs)
+          ({stree=PrintStmt checkedexpr, pos=pos}, msgs, locsyms)
       end ) (* TODO: printable types, from a tenv? *)
 
-  | checkstmt vsyms argsyms fdecls
+  | checkstmt outsyms locsyms fsyms
               {stree=CallStmt callexpr, pos} = (
       (* Parser ensures it's a FunCallExpr *)
       let val (checkedexpr as {etree=_, typ=rettype, pos=cpos}, msgs) =
-              typeexpr (vsyms @ argsyms, fdecls) callexpr
-          val newerrs = if rettype <> FmUnit
-                       then [("Discarded return value of type "
+              typeexpr (Symtable.merge locsyms outsyms, fsyms) callexpr
+          val newerrs = if rettype <> FmUnit then
+                            [("Discarded return value of type "
                               ^ (typestr rettype), pos)]
                        else []
-      in ({stree=CallStmt checkedexpr, pos=pos}, newerrs @ msgs)
+      in ({stree=CallStmt checkedexpr, pos=pos}, newerrs @ msgs, locsyms)
       end )
-  | checkstmt vsyms argsyms fdecls
+  | checkstmt outsyms locsyms fsyms
               {stree=ReturnStmt (SOME expr), pos} = (
       let val (checkedexpr as {etree=_, typ=rettype, pos=rpos}, msgs) =
-              typeexpr (vsyms @ argsyms, fdecls) expr
+              typeexpr (Symtable.merge locsyms outsyms, fsyms) expr
           val newerrs = (
-              case vlookup argsyms "*return*" 
-                  (* special entry to args table *)
-               of SOME entry => 
-                  if rettype <> (#vtype entry)
-                  then [("Returned value type '" ^ (typestr rettype)
-                         ^ "' doesn't match function type '"
-                         ^ (typestr (#vtype entry)) ^ "'", pos)]
-                  else []
-                (* if happens, bug in symtable code *)
-                | NONE => (print "Return not found\n"; raise Empty) )
-                            
-      in ({stree=ReturnStmt (SOME checkedexpr), pos=pos}, newerrs @ msgs)
+              let val retentry =
+                      if isSome (Symtable.lookup locsyms "*return*") then
+                          (Symtable.lookup locsyms "*return*")
+                      else Symtable.lookup outsyms "*return*"
+              in case retentry (* special entry to table *)
+                  of SOME entry => 
+                     if rettype <> (#vtype entry)
+                     then [("Returned value type : '" ^ (typestr rettype)
+                            ^ "' doesn't match function type : '"
+                            ^ (typestr (#vtype entry)) ^ "'", pos)]
+                     else []
+                   (* if happens, bug in symtable code *)
+                   | NONE => (print "Return not found\n"; raise Empty) 
+              end )
+      in ({stree=ReturnStmt (SOME checkedexpr), pos=pos}, newerrs @ msgs,
+          locsyms)
       end )
-  | checkstmt _ argsyms _ {stree=ReturnStmt NONE, pos} = (
-    let val newerrs = (
-            case vlookup argsyms "*return*" 
-             of SOME entry =>
-                if (#vtype entry) <> FmUnit
-                then [("Empty return statement; expected value of type "
-                       ^ typestr (#vtype entry), pos)]
-                else []
-              | NONE => (print "Couldn't find return entry\n";
-                         raise Empty) )(* if happens, bug in symtable code *)
-    in ({stree=ReturnStmt NONE, pos=pos}, newerrs)
-    end )
-  | checkstmt _ _ _ ({stree=BreakStmt, pos}) =
-    ({stree=BreakStmt, pos=pos}, [])
+  | checkstmt outsyms locsyms _ {stree=ReturnStmt NONE, pos} = (
+      let val newerrs = (
+              let val retentry = if isSome (Symtable.lookup locsyms "*return*")
+                                 then (Symtable.lookup locsyms "*return*")
+                                 else Symtable.lookup outsyms "*return*"
+              in case retentry
+                  of SOME entry =>
+                     if (#vtype entry) <> FmUnit
+                     then [("Empty return statement; expected value of type "
+                            ^ typestr (#vtype entry), pos)]
+                     else []
+                   | NONE => (print "Couldn't find return entry\n";
+                              raise Empty)
+              end )(* means bug in symtable code *)
+      in ({stree=ReturnStmt NONE, pos=pos}, newerrs, locsyms)
+      end )
+  | checkstmt _ locsyms _ ({stree=BreakStmt, pos}) =
+    ({stree=BreakStmt, pos=pos}, [], locsyms)
+
 
 (** Merge global and local symbols to check each statement in a block,
   * then check that every statement is reachable. *)
-and checkblock (gsyms: symtable) args (fsyms: ftable) (lsyms, stmts) =
-    let val (checkedstmts, msglists) =
-            ListPair.unzip (map (checkstmt (gsyms @ lsyms) args fsyms) stmts)
-        val msgs = (List.concat msglists) @ checkreachable stmts
-    in ((lsyms, checkedstmts), msgs)
+and checkblock outsyms fsyms ((lsyms, stmts): sblock) =
+    (* lsyms should be empty *)
+    let fun chkblockacc [] symacc erracc stmtacc =
+          (((symacc, rev stmtacc): sblock), erracc)
+          | chkblockacc (stmt::rest) symacc erracc stmtacc =
+            let val (newstmt, errs, newsyms) =
+                    checkstmt outsyms symacc fsyms stmt
+            in chkblockacc rest newsyms (erracc @ errs) (newstmt::stmtacc)
+                        (* checkstmt folds in newsyms itself. *)
+                        (* keep global (outside) syms separate to distinguish
+                         * shadowing and redefinition *)
+                        (* checkstmt will check if declared before use,
+                         * so can keep all syms *)
+            end 
+        val (newblock, errs) = chkblockacc stmts Symtable.empty [] []
+    in (* add reachability check here. *)
+        (newblock, errs @ (checkreachable stmts))
     end 
+
 
 (** Check that all variables used in expressions in a statement list are
   * initialized.
@@ -384,7 +468,7 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
                            ^ "' may be used before initialization",
                            (#pos stmt))) nones
           end
-        val (errs, newinits) = (
+        val (funerrs, newinits) = (
             case (#stree stmt) of
                 (* We could strip off types and just use a list of vars. *)
                 (* ** Assignment initializes. ** *)
@@ -436,7 +520,7 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
         (* initalized variables accumulate tail-style, errors direct-style *)
         let val (nexterrs, allinits) = checkinit (newinits @ initedvars) stmts
         in
-            (errs @ nexterrs, allinits)
+            (funerrs @ nexterrs, allinits)
         end
     end
 
@@ -450,93 +534,56 @@ fun willreturn [] = false
       | _ => willreturn stmts 
 
 (** Procs: Add return type to argument types and call checkblock on the body *)
-fun checkproc gsyms prevfdecls (top as {fname, argdecls, rettype, pos},
-                                sblock as (blksyms, stmtlist)) =
-  let val (newblock, errs) = 
+fun checkproc gsyms prevfsyms (top as {fname, argdecls, rettype, pos},
+                                sblock (* as (blksyms, stmtlist)*)) =
+  let val (newblock, funerrs) = 
           checkblock
-              gsyms
-              (* Add return type to proc's -argument- symbol table *)
-              ({name="*return*", vtype=rettype, sclass=Local}::argdecls)
-              prevfdecls sblock 
+              (* Formerly: add return type to proc's argument symbol table *)
+              (* Now add to outer syms *)
+              (Symtable.insert gsyms
+                               {name="*return*", vtype=rettype,
+                                sclass=Local})
+              prevfsyms sblock
+      (* Additional non-modifying analyses: return, break, inited variables.
+       *  They don't return new structures. *)
       val returnerr = 
-          if rettype = FmUnit orelse willreturn stmtlist
+          if rettype = FmUnit orelse willreturn sblock (* stmtlist *)
           then []
           else [("Procedure " ^ fname ^ " may not return a value", pos)]
-      val initerrs = #1 (checkinit (gsyms @ argdecls) stmtlist)
-      val breakerrs = ( print "did checkinit\n"; checkbreak stmtlist )
+      val initerrs = #1 (checkinit (gsyms @ argdecls) sblock) (*stmtlist)*)
+      val breakerrs = ( print "checked vars for initialization\n";
+                        checkbreak sblock (*stmtlist*) )
       val newproc = (top, newblock)
-  in (newproc, if errs @ returnerr @ initerrs @ breakerrs = [] then []
+  in (newproc, if funerrs @ returnerr @ initerrs @ breakerrs = [] then []
                else (*"*** Errors in procedure " ^ fname
-                    ^ ": " ::*) (errs @ returnerr @ initerrs @ breakerrs))
+                    ^ ": " ::*) (funerrs @ returnerr @ initerrs @ breakerrs))
   end
 
-(** Create symtable entry for single declaration, or error *)
-(* is it supposed to add to syms? Then would a plain-old fold work? *)
-fun addDecl sclass ({name, vtype, pos, dtype}:decl) syms =
-  if isSome (Symtable.lookup syms name)
-  then ERR ("Redeclaration of " ^ name, pos)
-  else (
-      case dtype
-       of VarDecl =>
-          VAL (Symtable.insert syms {name=name, vtype=vtype,
-                                     sclass=sclass, cval=NONE})
-       | ConstDecl expr => (
-           case evalConstExp accsyms expr
-            of NONE =>
-               ERR ("Non-constant initializer for " ^ name, pos)
-             | SOME (IntVal v) => 
-               if vtype = FmInt
-               then
-                   VAL (Symtable.insert syms
-                                        {name=name, vtype=vtype,
-                                         sclass=Const, cval=SOME (IntVal v)})
-               else ERR ("Const initializer type mismatch for " ^ name ^
-                         ": declared as " ^ (typestr vtype) ^
-                         ", initializer is int", pos)
-             | SOME (DoubleVal v) => 
-               if vtype = FmDouble
-               then
-                   VAL (Symtable.insert syms
-                                        {name=name, vtype=vtype, sclass=Const,
-                                         cval=SOME (DoubleVal v)})
-               else ERR ("Const initializer type mismatch for " ^ name ^
-                         ": declared as " ^ (typestr vtype) ^
-                         ", initializer is double", pos)
-             | SOME (BoolVal v) => 
-               if vtype = FmBool
-               then VAL (Symtable.insert syms
-                                         {name=name, vtype=vtype,sclass=Const,
-                                          cval=SOME (BoolVal v)})
-               else ERR ("Const initializer type mismatch for " ^ name ^
-                         ": declared as " ^ (typestr vtype) ^
-                         ", initializer is bool", pos))
-       | IODecl sclass => VAL (Symtable.insert
-                                   syms
-                                   {name=name, vtype=vtype,
-                                    sclass=sclass, cval=NONE})
-  )
-      
+
+
 (** must get new versions of fdefns and main, plus return errors *)
 fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
   (* raise if symtables not empty? *)
-  let val predecls = iodecls @ gdecls
+  let val (newgsyms, gdeclerrs) =
+          (* addDecl ignores the 'Global' for the iodecl type *)
+          foldEither (addDecl Global) Symtable.empty (iodecls @ gdecls)
       (** Accumulates list of checked function definitions and errors *)
       fun checkaccum [] (accdefns: fdefn list) accerrs =
         (accdefns, (* rev *) accerrs) (* don't reverse args IN a function *)
         | checkaccum ((fdefn as (fdecl, fbody)) :: frest) accdefns accerrs = (
-            let (* val accdecls = map #1 accdefns *)
+            let val accfsyms = Funtable.maketable (map #1 accdefns)
                 val newerrs =
-                    if isSome (flookup accdecls (#fname fdecl))
+                    if isSome (Funtable.lookup accfsyms (#fname fdecl))
                     then [("*** Error: function redeclaration: "
                            ^ (#fname fdecl), (#pos fdecl))]
                     else []
-                val (newfdefn, procerrs) = (checkproc predecls accdecls fdefn)
+                val (newfdefn, procerrs) = (checkproc newgsyms accfsyms fdefn)
             in checkaccum frest
                           (newfdefn::accdefns) (* bottom first *)
                           (newerrs @ procerrs @ accerrs) (* reverse at end *)
             end )
-      val (newfdefns, errs) = checkaccum fdefns [] []
-      val newfdecls = map #1 newfdefns
+      val (newfdefns, funerrs) = checkaccum fdefns [] []
+      val newfsyms = Funtable.maketable (map #1 newfdefns)
       (* main is treated separately (for now) *)
       val (newmain, mainerrs) =
           case main
@@ -547,7 +594,7 @@ fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
                           predecls
                           (* Only argument symbol is return type of Unit *)
                           [{name="*return*", vtype=FmUnit, sclass=Local}]
-                          newfdecls mainblock 
+                          newfsyms mainblock 
                   val mainerrs =
                       if blkerrs @ initerrs <> []
                       then (*"*** Errors in main: " ::*) (blkerrs @ initerrs)
@@ -557,5 +604,5 @@ fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
             | NONE => (NONE, [])
   in
       ({iodecls=iodecls, gdecls=gdecls, fdefns=newfdefns, main=newmain},
-       errs @ mainerrs)
+       gdeclerrs @ funerrs @ mainerrs)
   end

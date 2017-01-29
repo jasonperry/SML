@@ -2,8 +2,6 @@
 (* Put util functions here. *)
 open Fmabsyn;
 
-structure Loc = Location;
-
 (** Add a single storage type to every entry of a var list,
   * and make it a list of symtable entries *)
 fun addstoretype _ [] = []
@@ -54,12 +52,11 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 /* %type <(string * valtype) list> Vdecls Vdecl  */
 %type <string list> Varlist
 %type <Fmabsyn.fdefn list> Fdefns 
-/* %type <(Fmabsyn.symtable * Fmabsyn.stmt list)> Sblock */
-%type <(Fmabsyn.stmt list)> Sblock
-%type <(string * valtype) list>  Params 
-%type <Fmabsyn.expr list> Args
-%type <(string * valtype)> Param
 %type <Fmabsyn.fdefn> Fdefn
+%type <(string * valtype) list>  Params 
+%type <(string * valtype)> Param
+%type <Fmabsyn.expr list> Args
+%type <(Symtable.symtable * Fmabsyn.stmt list)> Sblock
 %type <Fmabsyn.stmt list> Stmts
 %type <Fmabsyn.stmt> Stmt LineStmt BlockStmt
 %type <Fmabsyn.stmt> DeclStmt AssnStmt IfStmt WhileStmt PrintStmt CallStmt
@@ -101,10 +98,12 @@ IOdecls:
   | IOdecl SEMI IOdecls                  { $1 :: $3 }
 ;         
 IOdecl:
-    INDATA NAME COLON Typeexp           { IODecl ($2, $4, Indata,
-                                                  Loc.getCurrentLocation()) }
-  | OUTDATA NAME COLON Typeexp          { IODecl ($2, $4, Outdata,
-                                                  Loc.getCurrentLocation()) }
+    INDATA NAME COLON Typeexp           { {name=$2, vtype=$4, 
+                                           pos=Location.getCurrentLocation(),
+                                           dtype=(IODecl Indata) } }
+  | OUTDATA NAME COLON Typeexp          { {name=$2, vtype=$4, 
+                                           pos=Location.getCurrentLocation(),
+                                           dtype=(IODecl Outdata) } }
 ;
 Vdecls:
     /* empty */                         { [] }
@@ -112,14 +111,16 @@ Vdecls:
   | ConstDecl SEMI Vdecls               { $1::$3 }
 ;
 Vdecl: 
-    VAR Varlist COLON Typeexp           { map (fn v => VarDecl (v, $4,
-                                               Loc.getCurrentLocation()))
-                                              $2 }
+    VAR Varlist COLON Typeexp           { map
+                                           (fn vname => {name=vname, vtype=$4,
+                                            pos=Location.getCurrentLocation(),
+                                            dtype=VarDecl}) $2 }
 ;
 ConstDecl:
     CONST NAME COLON Typeexp ASSIGN Expr
-                                        { ConstDecl ($2, $4, $6,
-                                                     Loc.getCurrentLocation()) }
+                                        { {name=$2, vtype=$4,
+                                           pos=Location.getCurrentLocation(),
+                                           dtype=(ConstDecl $6)} }
 ;
 Varlist:
     NAME                                { [$1] }
@@ -155,7 +156,7 @@ Ftype:
   | DASHARROW Typeexp                   { $2 }
 ;
 Sblock: 
-    LBRACE /* Vdecls */ Stmts RBRACE    { $2 }
+    LBRACE Stmts RBRACE                 { (Symtable.empty, $2) }
 ;
 Stmts: 
     /* empty */                         { [] }
