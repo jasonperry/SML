@@ -40,9 +40,9 @@ fun printdecl {name, vtype, sclass} =
 (** Print expression in C code. *)
 fun printexpr expr =
   case (#etree expr)
-   of ConstInt n => Int.toString n
-    | ConstBool b => if b then "1" else "0"
-    | ConstDouble d => Real.toString d
+   of ConstExpr (IntVal n) => Int.toString n
+    | ConstExpr (BoolVal b) => if b then "1" else "0"
+    | ConstExpr (DoubleVal d) => Real.toString d
     | VarExpr v => v
     | NotExpr expr => "!(" ^ printexpr expr ^ ")"
     | BoolExpr (And, e1, e2) =>
@@ -60,7 +60,7 @@ fun printexpr expr =
       fname ^ "(" ^ joinwith ", " (map printexpr elist) ^ ")"
 
 fun printstmt {stree, pos} =
-  case stree
+  case stree (* TODO: DeclStmt *)
    of AssignStmt (var, expr) => var ^ " = " ^ printexpr expr ^ ";"
     | IfStmt (cond, thenblk, elseopt) =>
       "if (" ^ printexpr cond ^ ")" ^ printsblock thenblk 
@@ -91,7 +91,7 @@ fun printstmt {stree, pos} =
       "return " ^ printexpr retexpr ^ ";"
     | BreakStmt => "break;"
 
-and printsblock (decls, stmts) = "{\n" ^
+and printsblock (decls, stmts) = "{\n" ^ (* Symtable now. *)
   termwith ";\n" (map printdecl decls) ^
   joinwith "\n" (map printstmt stmts) ^ "\n}\n"
 

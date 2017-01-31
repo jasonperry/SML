@@ -441,7 +441,8 @@ and checkblock outsyms fsyms ((lsyms, stmts): sblock) =
 (** Check that all variables used in expressions in a statement list are
   * initialized.
   * Return errors plus variables initialized in this block (for if/else) *)
-fun checkinit (initedvars: symtable) [] = ([], initedvars)
+(* Code initializes global variables to zero or equivalent? *)
+(*fun checkinit (initedvars: symtable) [] = ([], initedvars)
   | checkinit initedvars (stmt::stmts) =
     (* This could go outside, doesn't close over anything. *)
     let fun usedvars expr = (
@@ -523,7 +524,7 @@ fun checkinit (initedvars: symtable) [] = ([], initedvars)
             (funerrs @ nexterrs, allinits)
         end
     end
-
+*)
 (** Check if a statement list always returns *)
 fun willreturn [] = false
   | willreturn (stmt::stmts) = 
@@ -542,21 +543,21 @@ fun checkproc gsyms prevfsyms (top as {fname, argdecls, rettype, pos},
               (* Now add to outer syms *)
               (Symtable.insert gsyms
                                {name="*return*", vtype=rettype,
-                                sclass=Local})
+                                sclass=Local, cval=NONE})
               prevfsyms sblock
       (* Additional non-modifying analyses: return, break, inited variables.
        *  They don't return new structures. *)
       val returnerr = 
-          if rettype = FmUnit orelse willreturn sblock (* stmtlist *)
+          if rettype = FmUnit orelse willreturn (#2 sblock) (* stmtlist *)
           then []
           else [("Procedure " ^ fname ^ " may not return a value", pos)]
-      val initerrs = #1 (checkinit (gsyms @ argdecls) sblock) (*stmtlist)*)
+      (*val initerrs = #1 (checkinit (gsyms @ argdecls) sblock) *)
       val breakerrs = ( print "checked vars for initialization\n";
-                        checkbreak sblock (*stmtlist*) )
+                        checkbreak (#2 sblock) (*stmtlist*) )
       val newproc = (top, newblock)
-  in (newproc, if funerrs @ returnerr @ initerrs @ breakerrs = [] then []
+  in (newproc, if funerrs @ returnerr (* @ initerrs*) @ breakerrs = [] then []
                else (*"*** Errors in procedure " ^ fname
-                    ^ ": " ::*) (funerrs @ returnerr @ initerrs @ breakerrs))
+                    ^ ": " ::*) (funerrs @ returnerr (*@ initerrs*) @ breakerrs))
   end
 
 
@@ -585,23 +586,25 @@ fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
       val (newfdefns, funerrs) = checkaccum fdefns [] []
       val newfsyms = Funtable.maketable (map #1 newfdefns)
       (* main is treated separately (for now) *)
-      val (newmain, mainerrs) =
+      val (newmain, mainerrs) = (
           case main
            of SOME (mainblock as (mainsyms, mainstmts)) =>
-              let val (initerrs, _) = checkinit predecls mainstmts
+              let (* val (initerrs, _) = checkinit newgsyms mainstmts *)
                   val (newmblock, blkerrs) = 
                       checkblock
-                          predecls
-                          (* Only argument symbol is return type of Unit *)
-                          [{name="*return*", vtype=FmUnit, sclass=Local}]
-                          newfsyms mainblock 
+                          (Symtable.insert
+                               newgsyms (* add return type *)
+                               {name="*return*", vtype=FmUnit, sclass=Local,
+                                cval=NONE})
+                          newfsyms
+                          mainblock 
                   val mainerrs =
-                      if blkerrs @ initerrs <> []
-                      then (*"*** Errors in main: " ::*) (blkerrs @ initerrs)
+                      if blkerrs (* @ initerrs *) <> []
+                      then (*"*** Errors in main: " ::*) (blkerrs (*@ initerrs*))
                       else []
               in (SOME newmblock, mainerrs)
               end
-            | NONE => (NONE, [])
+            | NONE => (NONE, []) )
   in
       ({iodecls=iodecls, gdecls=gdecls, fdefns=newfdefns, main=newmain},
        gdeclerrs @ funerrs @ mainerrs)

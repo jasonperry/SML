@@ -9,7 +9,7 @@ MOSMLYACC=mosmlyac
 
 #UNITS= -structure Fmparse Fmtypes Fmlexer Fmabsyn -toplevel Symtable Pmain
 
-all: Either.uo Symtable.uo Fmabsyn.uo Fmlexer.uo Fmparse.uo Fmtypes.uo Pmain.uo fmc
+all: Either.uo Symtable.uo Fmabsyn.uo Fmlexer.uo Fmparse.uo Fmtypes.uo FmtoC.uo Pmain.uo fmc
 #	mosml load
 
 .SUFFIXES :
@@ -37,7 +37,7 @@ Symtable.uo: Symtable.sml
 	$(MOSMLC) -toplevel Symtable.sml 
 
 Fmabsyn.uo: Fmabsyn.sml Symtable.uo # if uo changed, ui definitely did.
-	$(MOSMLC) -toplevel Symtable.ui Fmabsyn.sml 
+	$(MOSMLC) -structure Symtable.ui Fmabsyn.sml 
 
 Fmparse.sml Fmparse.sig: Fmparse.grm
 	$(MOSMLYACC) Fmparse.grm
@@ -55,9 +55,12 @@ Fmparse.uo: Fmparse.sml Fmparse.ui
 Fmtypes.uo: Fmtypes.sml Symtable.uo Either.uo Fmabsyn.uo
 	$(MOSMLC) -structure Symtable.ui Either.ui Fmabsyn.ui Fmtypes.sml 
 
-Pmain.uo: Pmain.sml Symtable.uo Fmabsyn.uo Fmparse.uo Fmlexer.uo
+FmtoC.uo: Fmabsyn.uo Symtable.uo
+	$(MOSMLC) -structure Symtable.ui Fmabsyn.ui FmtoC.sml
+
+Pmain.uo: Pmain.sml Symtable.uo Fmabsyn.uo Fmparse.uo Fmlexer.uo FmtoC.uo
 	$(MOSMLC) -toplevel Symtable.ui Fmabsyn.ui Fmlexer.ui \
-    Fmtypes.ui Fmparse.ui Pmain.sml 
+    Fmparse.ui Fmtypes.ui FmtoC.ui Pmain.sml 
 
 fmc:	Pmain.uo
 	$(MOSMLL) -o fmc Pmain.uo
