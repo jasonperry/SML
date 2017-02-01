@@ -37,7 +37,7 @@ Symtable.uo: Symtable.sml
 	$(MOSMLC) -toplevel Symtable.sml 
 
 Fmabsyn.uo: Fmabsyn.sml Symtable.uo # if uo changed, ui definitely did.
-	$(MOSMLC) -structure Symtable.ui Fmabsyn.sml 
+	$(MOSMLC) -toplevel Symtable.ui Fmabsyn.sml 
 
 Fmparse.sml Fmparse.sig: Fmparse.grm
 	$(MOSMLYACC) Fmparse.grm

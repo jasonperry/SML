@@ -570,7 +570,7 @@ fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
           foldEither (addDecl Global) Symtable.empty (iodecls @ gdecls)
       (** Accumulates list of checked function definitions and errors *)
       fun checkaccum [] (accdefns: fdefn list) accerrs =
-        (accdefns, (* rev *) accerrs) (* don't reverse args IN a function *)
+        (accdefns, (* rev *) accerrs) (* order? *)
         | checkaccum ((fdefn as (fdecl, fbody)) :: frest) accdefns accerrs = (
             let val accfsyms = Funtable.maketable (map #1 accdefns)
                 val newerrs =

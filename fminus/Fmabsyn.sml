@@ -1,8 +1,61 @@
 (* Fmabsyn.sml  -- the abstract syntax datatype *)
+(* Possibly all this stuff in a file named "FmDefs" that everything depends
+ * on. *)
+type srcpos = Location.Location
+type errormsg = string * srcpos
+
+(** TYPE AND SYMBOL TABLE DECLARATIONS *)
+(* Some subtyping? Eq, Ord, Num, *)
+datatype valtype = FmInt | FmDouble | FmBool | FmUnit | Untyped
+                   (* | FmArray of valtype * int *)
+(* Strings for types, for use in type checker messages *)
+fun typestr FmInt = "int"
+  | typestr FmDouble = "double"
+  | typestr FmBool = "bool"
+  | typestr FmUnit = "unit"
+  | typestr Untyped = "**UNTYPED**" 
+
+(* What will I do when I want enumerated constants? Tags? *)
+datatype constval = IntVal of int
+                  | DoubleVal of real
+                  | BoolVal of bool
+
+(* TODO: add index type *)
+datatype storeclass = Indata
+                    | Outdata
+                    | Global
+                    | Local
+                    | Arg
+                    | Const (* DON'T keep value here; eval'ed to symtable *)
+
+type symentry = { name: string, vtype: valtype, sclass: storeclass,
+                 cval: constval option }
+
+
+(* Think we don't want opaque here. still want to use symentry on our own. *)
+structure StEntry : ST_ENTRY = struct
+    type entry = symentry
+    fun name e = #name e
+end
+
+(* Note: SymtableFn must be visible (toplevel mode) *)
+structure Symtable = SymtableFn (StEntry)
+
+type fdecl = { fname: string, 
+               argdecls: symentry list, (* because know everything now? *)
+               rettype: valtype,
+               pos: srcpos }
+
+structure FtEntry : ST_ENTRY = struct
+    type entry = fdecl
+    fun name e = #fname e
+end
+
+structure Funtable = SymtableFn (FtEntry)
 
 
 (** ACTUAL ABSTRACT SYNTAX SECTION **)
-(* structure Fmabsyn = struct *)
+structure Fmabsyn = struct
 
 datatype relop = Eq | Ne | Gt | Ge | Lt | Le
 (* TODO: bitwise not, shifts *)
@@ -53,4 +106,4 @@ type progtext = { iodecls: decl list,  (* don't have to be stmts here *)
                   fsyms: Funtable.symtable,
                   main: sblock option }
 
-(* end *)
+end

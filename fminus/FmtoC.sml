@@ -30,7 +30,8 @@ fun termwith inter [] = ""
   | termwith inter (s::strs) = s ^ inter ^ (termwith inter strs)
 
 (* Storage class not used? If const, will change *)
-fun printdecl {name, vtype, sclass} =  
+fun printdecl {name, vtype, sclass} =
+  (if sclass = Const then "const " else "") ^
   case vtype of
       FmInt => "int " ^ name
     | FmDouble => "double " ^ name 
