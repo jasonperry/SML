@@ -175,10 +175,10 @@ fun typeexpr (decls: Symtable.symtable * Funtable.symtable)
       end )
   | typeexpr (decls as (vsyms, fdecls)) {etree=FunCallExpr (fname, fnargs),
                                          typ=_, pos} = (
-      let fun matchargs [] [] = [] 
+      let fun matchargs [] [] = [] (* match formal and actual params *)
             | matchargs (p::ps) [] = [("Not enough arguments to " ^ fname, pos)]
             | matchargs [] (p::ps) = [("Too many arguments to " ^ fname, pos)]
-            | matchargs ({name, vtype, sclass, cval}::ps) (arg::args) = 
+            | matchargs ((name, vtype)::ps) (arg::args) = 
               case typeexpr decls arg
                of ({etree=_, typ=Untyped, pos=apos}, msgs) =>
                   msgs @ (matchargs ps args) (* Keep going *)
@@ -192,8 +192,8 @@ fun typeexpr (decls: Symtable.symtable * Funtable.symtable)
               case Funtable.lookup fdecls fname 
                of NONE => (Untyped, [("Unrecognized function name: "
                                       ^ fname, pos)])
-               |  SOME {fname, argdecls, rettype, pos} =>
-                  case matchargs argdecls fnargs
+               |  SOME {fname, params, rettype, pos} =>
+                  case matchargs params fnargs
                   (* issue: testing success based on no msgs (see above) *)
                    of [] => (rettype, []) 
                     | funerrs => (Untyped, funerrs)
@@ -535,7 +535,7 @@ fun willreturn [] = false
       | _ => willreturn stmts 
 
 (** Procs: Add return type to argument types and call checkblock on the body *)
-fun checkproc gsyms prevfsyms (top as {fname, argdecls, rettype, pos},
+fun checkproc gsyms prevfsyms (top as {fname, params, rettype, pos},
                                 sblock (* as (blksyms, stmtlist)*)) =
   let val (newblock, funerrs) = 
           checkblock
@@ -551,7 +551,7 @@ fun checkproc gsyms prevfsyms (top as {fname, argdecls, rettype, pos},
           if rettype = FmUnit orelse willreturn (#2 sblock) (* stmtlist *)
           then []
           else [("Procedure " ^ fname ^ " may not return a value", pos)]
-      (*val initerrs = #1 (checkinit (gsyms @ argdecls) sblock) *)
+      (*val initerrs = #1 (checkinit (gsyms @ params) sblock) *)
       val breakerrs = ( print "checked vars for initialization\n";
                         checkbreak (#2 sblock) (*stmtlist*) )
       val newproc = (top, newblock)
@@ -572,7 +572,7 @@ fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
       fun checkaccum [] (accdefns: fdefn list) accerrs =
         (accdefns, (* rev *) accerrs) (* order? *)
         | checkaccum ((fdefn as (fdecl, fbody)) :: frest) accdefns accerrs = (
-            let val accfsyms = Funtable.maketable (map #1 accdefns)
+            let val accfsyms = Funtable.fromList (map #1 accdefns)
                 val newerrs =
                     if isSome (Funtable.lookup accfsyms (#fname fdecl))
                     then [("*** Error: function redeclaration: "
@@ -584,7 +584,7 @@ fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
                           (newerrs @ procerrs @ accerrs) (* reverse at end *)
             end )
       val (newfdefns, funerrs) = checkaccum fdefns [] []
-      val newfsyms = Funtable.maketable (map #1 newfdefns)
+      val newfsyms = Funtable.fromList (map #1 newfdefns)
       (* main is treated separately (for now) *)
       val (newmain, mainerrs) = (
           case main
@@ -606,6 +606,7 @@ fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
               end
             | NONE => (NONE, []) )
   in
-      ({iodecls=iodecls, gdecls=gdecls, fdefns=newfdefns, main=newmain},
+      ({iodecls=iodecls, gdecls=gdecls, fdefns=newfdefns,
+        gsyms=newgsyms, fsyms=newfsyms, main=newmain},
        gdeclerrs @ funerrs @ mainerrs)
   end

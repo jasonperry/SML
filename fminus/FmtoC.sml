@@ -29,15 +29,21 @@ fun termwith inter [] = ""
 (*  | termwith inter [s] = s ^ inter *)
   | termwith inter (s::strs) = s ^ inter ^ (termwith inter strs)
 
-(* Storage class not used? If const, will change *)
-fun printdecl {name, vtype, sclass} =
-  (if sclass = Const then "const " else "") ^
+(* What is the datatype appropriate here?! *)
+fun printparam (name, vtype) =
+(*   (if sclass = Const then "const " else "") ^ *)
   case vtype of
       FmInt => "int " ^ name
     | FmDouble => "double " ^ name 
     | FmBool => "bool " ^ name
     | _ => raise Unsupported ("Unsupported type: " ^ (typestr vtype))
-
+fun printdecl {name, vtype, pos, dtype} =
+  case dtype of
+      VarDecl => typestr vtype ^ " " ^ name
+     (* Needs expr value. Get from symtable? *)
+    | ConstDecl expr => "const " ^ typestr vtype ^ " " ^ name
+    | IODecl sclass => "" (* Don't print in C code *)
+                 
 (** Print expression in C code. *)
 fun printexpr expr =
   case (#etree expr)
@@ -62,7 +68,8 @@ fun printexpr expr =
 
 fun printstmt {stree, pos} =
   case stree (* TODO: DeclStmt *)
-   of AssignStmt (var, expr) => var ^ " = " ^ printexpr expr ^ ";"
+   of DeclStmt dlist = joinwith ";\n" (map printDecl dlist)
+    | AssignStmt (var, expr) => var ^ " = " ^ printexpr expr ^ ";"
     | IfStmt (cond, thenblk, elseopt) =>
       "if (" ^ printexpr cond ^ ")" ^ printsblock thenblk 
       ^ (if isSome elseopt
@@ -92,18 +99,17 @@ fun printstmt {stree, pos} =
       "return " ^ printexpr retexpr ^ ";"
     | BreakStmt => "break;"
 
-and printsblock (decls, stmts) = "{\n" ^ (* Symtable now. *)
-  termwith ";\n" (map printdecl decls) ^
-  joinwith "\n" (map printstmt stmts) ^ "\n}\n"
+and printsblock (_, stmts) = "{\n" ^ 
+                             joinwith "\n" (map printstmt stmts) ^ "\n}\n"
 
-fun printproc ({fname, argdecls, rettype, pos}, body) =
+fun printproc ({fname, params, rettype, pos}, body) =
   (case rettype of
        FmInt => "int "
      | FmDouble => "double "
      | FmBool => "bool "
      | _ => raise Unsupported ("Unsupported return type " ^
                                typestr rettype))
-  ^ fname ^ "(" ^ joinwith ", " (map printdecl argdecls) ^ ")"
+  ^ fname ^ "(" ^ joinwith ", " (map printparam params) ^ ")" (* TODO: params*)
   ^ printsblock body
 
 (* TODO: open UtilJP and get this function from there. *)

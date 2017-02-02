@@ -2,9 +2,9 @@ open Fmtypes;
 
 val vsyms = [("x", FmInt), ("y", FmBool)]
 val argsyms = [("*return*", FmInt)]
-val fdecls = [{fname="bar", argdecls=[], rettype=FmInt},
-              {fname="baz", argdecls=[("x", FmInt), ("y", FmBool)], rettype=FmBool},
-              {fname="noret", argdecls=[("x", FmInt)], rettype=FmUnit}]
+val fdecls = [{fname="bar", params=[], rettype=FmInt},
+              {fname="baz", params=[("x", FmInt), ("y", FmBool)], rettype=FmBool},
+              {fname="noret", params=[("x", FmInt)], rettype=FmUnit}]
 
 val stm1 = AssignStmt ("x", ConstExpr 5)
 val stm2 = AssignStmt ("y", ConstBool false)

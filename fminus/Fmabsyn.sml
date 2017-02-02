@@ -41,16 +41,17 @@ end
 (* Note: SymtableFn must be visible (toplevel mode) *)
 structure Symtable = SymtableFn (StEntry)
 
-type fdecl = { fname: string, 
-               argdecls: symentry list, (* because know everything now? *)
-               rettype: valtype,
-               pos: srcpos }
+type funentry = { fname: string, 
+                  params: (string * valtype) list, (* not symtable or decl *)
+                  rettype: valtype,
+                  pos: srcpos }
 
 structure FtEntry : ST_ENTRY = struct
-    type entry = fdecl
+    type entry = funentry
     fun name e = #fname e
 end
 
+(* Should I declar this inside the absyn structure? *)
 structure Funtable = SymtableFn (FtEntry)
 
 
@@ -64,8 +65,6 @@ datatype boolop = And | Or
 
 (** To give every expr a type accessible with #typ *)
 datatype etree = ConstExpr of constval
-(*               | ConstDouble of real
-               | ConstBool of bool *)
                | VarExpr of string (* later: symentry ref? Nah. *)
                | NotExpr of expr
                | BoolExpr of boolop * expr * expr
@@ -76,16 +75,15 @@ datatype etree = ConstExpr of constval
 (* should have (etree, PROPS of {typ, pos}) pair? *)
 withtype expr = {etree: etree, typ: valtype, pos:srcpos}
 
-datatype decltype = VarDecl | ConstDecl of expr | IODecl of storeclass
+datatype decltype = VarDecl  (* multiples broken by parser *)
+                  | ConstDecl of expr (* expr eval'ed at analysis *)
+                  | IODecl of storeclass (* Indata or Outdata *)
+
 type decl = {name: string, vtype: valtype, pos: srcpos, dtype: decltype}
-         (* multiples broken by parser *)
-         (* expr eval'ed at analysis *)
-         (* storeclass read at parse time: Indata or Outdata *)
 
 datatype stree = 
          DeclStmt of decl list (* These will be deleted on analysis *)
-         | AssignStmt of string * expr (* Symentry ref here too?
-                                        * lvalue type? *)
+         | AssignStmt of string * expr (* lvalue type? *)
          | IfStmt of expr * sblock * sblock option
          | WhileStmt of expr * sblock
          | ForStmt of stmt * expr * stmt * sblock
@@ -96,14 +94,16 @@ datatype stree =
 withtype stmt = {stree: stree, pos: srcpos}
      and sblock = Symtable.symtable * ({stree: stree, pos: srcpos} list)
 
+type fdecl = funentry (* same type *)
+                                   
 type fdefn = fdecl * sblock
 
 (* Input/output data declarations, then globals *)
 type progtext = { iodecls: decl list,  (* don't have to be stmts here *)
                   gdecls: decl list, (* addstoretype Global during analysis *)
                   fdefns: fdefn list,
-                  gsyms: Symtable.symtable,
-                  fsyms: Funtable.symtable,
+                  gsyms: Symtable.symtable option,
+                  fsyms: Funtable.symtable option,
                   main: sblock option }
 
 end

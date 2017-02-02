@@ -3,12 +3,12 @@
 open Fmabsyn;
 
 (** Add a single storage type to every entry of a var list,
-  * and make it a list of symtable entries *)
-fun addstoretype _ [] = []
+  * and make it a list of symtable entries *) (* Gone, no symtables here! *)
+(* fun addstoretype _ [] = []
   | addstoretype sclass ((name, vtype)::ents) = 
     {name=name, vtype=vtype, sclass=sclass,
      cval=NONE}::(addstoretype sclass ents)
-;
+; *)
 (*
 fun mkintop2 opr (Int n1, Int n2)  = Int (opr (n1, n2))
 fun mkboolop2 opr (Int n1, Int n2) = Int (opr (n1, n2))
@@ -83,14 +83,14 @@ Ptext:
     IOdecls Vdecls Fdefns                { {iodecls=$1,
                                             gdecls=$2, 
                                             fdefns=$3,
-                                            gsyms = Symtable.empty,
-                                            fsyms = Funtable.empty,
+                                            gsyms = NONE,
+                                            fsyms = NONE,
                                             main=NONE} }
   | IOdecls Vdecls Fdefns MAIN Sblock    { {iodecls=$1,
                                             gdecls=$2, 
                                             fdefns=$3,
-                                            gsyms = Symtable.empty,
-                                            fsyms = Funtable.empty,
+                                            gsyms = NONE,
+                                            fsyms = NONE,
                                             main=(SOME $5)} }
 ;
 IOdecls:
@@ -138,7 +138,7 @@ Fdefns:
 Fdefn: 
     PROC NAME LPAR Params RPAR Ftype Sblock
                                         { ({fname=$2,
-                                            argdecls=(addstoretype Arg $4),
+                                            params=$4,
                                             rettype=$6,
                                             pos=Location.getCurrentLocation()},
                                            $7) }

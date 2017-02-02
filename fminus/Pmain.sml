@@ -42,7 +42,7 @@ fun parseReport file stream lexbuf =
 fun createLexerStream (instrm : BasicIO.instream) =
   Lexing.createLexer (fn buff => fn n => Nonstdio.buff_input instrm buff 0 n)
 
-fun printErrs (errlist: Fmabsyn.errormsg list) lexinfo =
+fun printErrs (errlist: errormsg list) lexinfo =
   case errlist
    of [] => ()
     | (errstr, pos)::rest => (

@@ -9,7 +9,7 @@ signature SYMTABLE = sig
     type symtable
 
     val empty: symtable
-    val maketable: symentry list -> symtable (* necessary? *)
+    val fromList: symentry list -> symtable
     val insert: symtable -> symentry -> symtable
     val lookup: symtable -> string -> symentry option
     val merge: symtable -> symtable -> symtable
@@ -26,7 +26,7 @@ type symtable = symentry list
 
 val empty: symtable = []
 
-fun maketable symlist = symlist
+fun fromList symlist = symlist
 
 fun insert (tab: symtable) e = e::tab
 
@@ -39,7 +39,7 @@ fun lookup ([]:symtable) symname = NONE
 
 (** Look up in function name symbol table *)
 (* fun flookup ([]:ftable) name = NONE
-  | flookup ((entry as {fname, argdecls, rettype, pos})::rest) name =
+  | flookup ((entry as {fname, params, rettype, pos})::rest) name =
     if name = fname then SOME entry
     else flookup rest name *)
 

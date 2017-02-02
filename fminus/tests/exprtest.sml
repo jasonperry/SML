@@ -2,8 +2,8 @@ open Fmtypes;
 
 val decls: symtable * fdecl list = (
     [("x", FmInt), ("y", FmBool)], 
-    [{fname="bar", argdecls=[], rettype=FmInt},
-     {fname="baz", argdecls=[("x", FmInt), ("y", FmBool)], rettype=FmBool}])
+    [{fname="bar", params=[], rettype=FmInt},
+     {fname="baz", params=[("x", FmInt), ("y", FmBool)], rettype=FmBool}])
 
 val ex1 = ConstExpr 5
 val ex2 = ConstBool true
