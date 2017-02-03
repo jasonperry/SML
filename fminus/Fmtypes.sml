@@ -299,20 +299,20 @@ fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
     end )
 
   | checkstmt outsyms locsyms fsyms 
-              {stree=IfStmt (cond, thenblock, elsblock), pos} = (
+              {stree=IfStmt (cond, thenblock, elseblock), pos} = (
       let val (checkedcond as {etree=_, typ=ctype, pos=pos1}, msgs1) =
               typeexpr (Symtable.merge locsyms outsyms, fsyms) cond
           val (checkedthen, msgs2) =
               checkblock (Symtable.merge outsyms locsyms) fsyms thenblock
           val (checkedelse, msgs3) = (
-              case elsblock 
+              case elseblock 
                of SOME sblock => 
                   let val (res, msgs) =
                           checkblock (Symtable.merge outsyms locsyms)
                                      fsyms sblock
                   in (SOME res, msgs)
                   end               
-                | NONE => (elsblock, []) )
+                | NONE => (elseblock, []) )
           val newerrs = if ctype <> FmBool
                        then [("Non-Boolean condition in if statement", pos)]
                        else []
@@ -437,7 +437,107 @@ and checkblock outsyms fsyms ((lsyms, stmts): sblock) =
         (newblock, errs @ (checkreachable stmts))
     end 
 
+fun inlist a [] = false
+  | inlist a (b::bs) = if a = b then true else inlist a bs
 
+fun listremove (a, []) = []  (* tupled for std library's foldl *)
+  | listremove (a, (b::bs)) = if a = b then listremove (a, bs)
+                           else b::(listremove (a, bs))
+fun listdiff blist alist = foldl listremove blist alist
+fun listintersect [] _ = []
+  | listintersect _ [] = []
+  | listintersect (a::rest) b = if inlist a b
+                                (* get rid of after finding once *)
+                                then a::(listintersect rest (listremove (a, b)))
+                                else listintersect rest b
+
+(** Find any uninited variables in a block *)
+fun checkinit stmts =
+  (* Return a list of variables used in an expression. *)
+  let fun usedvars expr = (
+          case (#etree expr) of
+              ConstExpr _ => []
+            | VarExpr vname => [vname]
+            | NotExpr e => usedvars e
+            | BoolExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
+            | CompExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
+            | ArithExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
+            | IfExpr (e1, e2, e3) => (usedvars e1) @ (usedvars e2)
+                                     @ (usedvars e3)
+            | FunCallExpr (_, elist) =>
+              List.concat (map usedvars elist) )
+                              
+      (** Look up each variable in a list of uninited ones.
+        * Generate error message for each one that's present. *)
+      fun checkvars uninited vlist pos =
+        let val noninited = List.filter (fn v => inlist v uninited) vlist
+        in map (fn v => ("Variable '" ^ v
+                         ^ "' may be used before initialization", pos))
+               noninited
+        end
+      (** Return a list of non-local variables initialized in a block.
+       *  For seeing if then/else blocks initialize anything. *)
+      (* Could I include this in checkinit main function if I add localvars? *)
+      fun initexports stmts =
+        let fun iexports' localvars [] = []
+              | iexports' localvars (stmt::stmts) = (
+                  case (#stree stmt)
+                   of DeclStmt dlist => (* add to local var list *)
+                      iexports' ((map #name dlist) @ localvars) stmts
+                    | AssignStmt (vname, _) => (* if not local, add it *)
+                      if not (inlist vname localvars)
+                      then vname::(iexports' localvars stmts)
+                      else iexports' localvars stmts
+                    | ForStmt (initstmt, _, _, _) =>
+                      (* For loop's initializer can init, block can't *)
+                      iexports' localvars (initstmt::stmts)
+                    | IfStmt (_, _, NONE) => iexports' localvars stmts
+                    | IfStmt (_, thenblock, SOME elseblock) =>
+                      (isectexports [thenblock, elseblock]::
+                       (iexports' localvars stmts))
+                    | _ => iexports' localvars stmts )
+        in iexports' [] stmts
+        end
+      and isectexports ([]: stmt list list) = []
+        (* Generalizes to multiple if, elsif, else blocks *)
+        | isectexports (block::blocks) =
+          listintersect (initexports block) (isectexports blocks)
+          
+      fun checkinit' [] uninited errs = errs
+        | checkinit' (stmt::stmts) uninited errs = (
+            case (#stree stmt)
+             of DeclStmt dlist => (* declaration adds uninited variables *)
+                checkinit' stmts ((map #name dlist) @ uninited) errs
+              | AssignStmt (varname, expr) =>
+                checkinit' stmts (* assigned var is initialized now *)
+                           (listremove varname uninited)
+                           ((checkvars uninited (usedvars expr) (#pos stmt))
+                            @ errs)
+              | IfStmt (cond, (_, ifstmts), NONE) =>
+                checkinit' stmts
+                           uninited
+                           ((checkvars uninited (usedvars cond) (#pos stmt))
+                            @ checkinit' ifstmts [] []
+                            @ errs)
+              | IfStmt (cond, (_, ifstmts), SOME (_, elsstmts)) =>
+                checkinit' stmts (* Remove variables initialized in both blocks *)
+                           (listdiff uninited (isectexports [ifstmts, elsstmts]))
+                           ((checkvars uninited (usedvars cond) (#pos stmt))
+                            @ checkinit' elsstmts uninited [] []
+                            @ checkinit' ifstmts uninited [] [] (* upside down *)
+                            @ errs)
+              | WhileStmt (cond, body) =>
+                checkinit' stmts
+                           uninited (* body might not run, no inits exported *)
+                           ((checkvars uninited (usedvars cond) (#pos stmt))
+                            @ (checkinit' body [] [])
+                            @ errs)
+              | _ => checkinit' stmts uninited errs
+        ) 
+  in rev (checkinit' stmts [] [])
+  end 
+
+                      
 (** Check that all variables used in expressions in a statement list are
   * initialized.
   * Return errors plus variables initialized in this block (for if/else) *)

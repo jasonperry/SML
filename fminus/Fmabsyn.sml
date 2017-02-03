@@ -51,7 +51,7 @@ structure FtEntry : ST_ENTRY = struct
     fun name e = #fname e
 end
 
-(* Should I declar this inside the absyn structure? *)
+(* Should I declare this inside the absyn structure? *)
 structure Funtable = SymtableFn (FtEntry)
 
 
