@@ -99,11 +99,11 @@ type fdecl = funentry (* same type *)
 type fdefn = fdecl * sblock
 
 (* Input/output data declarations, then globals *)
-type progtext = { iodecls: decl list,  (* don't have to be stmts here *)
-                  gdecls: decl list, (* addstoretype Global during analysis *)
-                  fdefns: fdefn list,
-                  gsyms: Symtable.symtable option,
-                  fsyms: Funtable.symtable option,
-                  main: sblock option }
+datatype progtext = PGM of { iodecls: decl list,  (* don't have to be stmts? *)
+                             gdecls: decl list, 
+                             fdefns: fdefn list,
+                             gsyms: Symtable.symtable option,
+                             fsyms: Funtable.symtable option,
+                             main: sblock option }
 
 end

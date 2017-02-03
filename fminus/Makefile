@@ -46,7 +46,7 @@ Fmparse.ui: Fmparse.sig Fmabsyn.uo Symtable.uo
 	$(MOSMLC) -structure Symtable.ui Fmabsyn.ui Fmparse.sig 
 
 # wait, what's parser/lexer dependency? First ui, then uo
-Fmlexer.uo: Fmlexer.sml 
+Fmlexer.uo: Fmlexer.sml Fmparse.ui
 	$(MOSMLC) -structure Fmparse.ui Fmlexer.sml 
 
 Fmparse.uo: Fmparse.sml Fmparse.ui 
@@ -55,10 +55,10 @@ Fmparse.uo: Fmparse.sml Fmparse.ui
 Fmtypes.uo: Fmtypes.sml Symtable.uo Either.uo Fmabsyn.uo
 	$(MOSMLC) -structure Symtable.ui Either.ui Fmabsyn.ui Fmtypes.sml 
 
-FmtoC.uo: Fmabsyn.uo Symtable.uo
+FmtoC.uo: FmtoC.sml Fmabsyn.uo Symtable.uo Fmtypes.uo
 	$(MOSMLC) -structure Symtable.ui Fmabsyn.ui FmtoC.sml
 
-Pmain.uo: Pmain.sml Symtable.uo Fmabsyn.uo Fmparse.uo Fmlexer.uo FmtoC.uo
+Pmain.uo: Pmain.sml Symtable.uo Fmabsyn.uo Fmparse.uo Fmlexer.uo Fmtypes.uo FmtoC.uo
 	$(MOSMLC) -toplevel Symtable.ui Fmabsyn.ui Fmlexer.ui \
     Fmparse.ui Fmtypes.ui FmtoC.ui Pmain.sml 
 

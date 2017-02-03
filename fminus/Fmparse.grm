@@ -80,18 +80,18 @@ Main:
 */
 
 Ptext:
-    IOdecls Vdecls Fdefns                { {iodecls=$1,
-                                            gdecls=$2, 
-                                            fdefns=$3,
-                                            gsyms = NONE,
-                                            fsyms = NONE,
-                                            main=NONE} }
-  | IOdecls Vdecls Fdefns MAIN Sblock    { {iodecls=$1,
-                                            gdecls=$2, 
-                                            fdefns=$3,
-                                            gsyms = NONE,
-                                            fsyms = NONE,
-                                            main=(SOME $5)} }
+    IOdecls Vdecls Fdefns                { PGM {iodecls=$1,
+                                                gdecls=$2, 
+                                                fdefns=$3,
+                                                gsyms = NONE,
+                                                fsyms = NONE,
+                                                main=NONE} }
+  | IOdecls Vdecls Fdefns MAIN Sblock    { PGM {iodecls=$1,
+                                               gdecls=$2, 
+                                               fdefns=$3,
+                                               gsyms = NONE,
+                                               fsyms = NONE,
+                                               main=(SOME $5)} }
 ;
 IOdecls:
     /* empty */                          { [] }

@@ -37,19 +37,15 @@ fun printparam (name, vtype) =
     | FmDouble => "double " ^ name 
     | FmBool => "bool " ^ name
     | _ => raise Unsupported ("Unsupported type: " ^ (typestr vtype))
-fun printdecl {name, vtype, pos, dtype} =
-  case dtype of
-      VarDecl => typestr vtype ^ " " ^ name
-     (* Needs expr value. Get from symtable? *)
-    | ConstDecl expr => "const " ^ typestr vtype ^ " " ^ name
-    | IODecl sclass => "" (* Don't print in C code *)
-                 
+
+fun printval (IntVal n) = Int.toString n
+  | printval (BoolVal b) = if b then "1" else "0"
+  | printval (DoubleVal d) = Real.toString d
+
 (** Print expression in C code. *)
 fun printexpr expr =
   case (#etree expr)
-   of ConstExpr (IntVal n) => Int.toString n
-    | ConstExpr (BoolVal b) => if b then "1" else "0"
-    | ConstExpr (DoubleVal d) => Real.toString d
+   of ConstExpr ce => printval ce
     | VarExpr v => v
     | NotExpr expr => "!(" ^ printexpr expr ^ ")"
     | BoolExpr (And, e1, e2) =>
@@ -66,14 +62,23 @@ fun printexpr expr =
     | FunCallExpr (fname, elist) =>
       fname ^ "(" ^ joinwith ", " (map printexpr elist) ^ ")"
 
+fun printdecl {name, vtype, pos, dtype} =
+  case dtype of
+      VarDecl => typestr vtype ^ " " ^ name
+    (* Needs expr value. Get from symtable? *)
+    | ConstDecl expr => "const " ^ typestr vtype ^ " " ^ name ^ " = " ^
+                        (printexpr expr)
+    | IODecl sclass => "" (* Turned into argv currently *)
+                 
+                                                              
 fun printstmt {stree, pos} =
-  case stree (* TODO: DeclStmt *)
-   of DeclStmt dlist = joinwith ";\n" (map printDecl dlist)
+  case stree 
+   of DeclStmt dlist => termwith ";\n" (map printdecl dlist)
     | AssignStmt (var, expr) => var ^ " = " ^ printexpr expr ^ ";"
     | IfStmt (cond, thenblk, elseopt) =>
       "if (" ^ printexpr cond ^ ")" ^ printsblock thenblk 
       ^ (if isSome elseopt
-         then printsblock (valOf elseopt)
+         then "else " ^ printsblock (valOf elseopt)
          else "")
     | WhileStmt (cond, whileblk) =>
       "while (" ^ printexpr cond ^ ")" ^ printsblock whileblk
@@ -99,8 +104,8 @@ fun printstmt {stree, pos} =
       "return " ^ printexpr retexpr ^ ";"
     | BreakStmt => "break;"
 
-and printsblock (_, stmts) = "{\n" ^ 
-                             joinwith "\n" (map printstmt stmts) ^ "\n}\n"
+and printsblock (_, stmts) =
+    "{\n" ^ joinwith "\n" (map printstmt stmts) ^ "\n}\n"
 
 fun printproc ({fname, params, rettype, pos}, body) =
   (case rettype of
@@ -119,10 +124,10 @@ fun mapi f lst =
   in mapi' 0 lst
   end
 
-fun printprog {ddecls, gdecls, fdefns, main} =
-  (* Turn ddecls into command-line args *)
+fun printprog (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) =
+  (* Turn iodecls into command-line args *)
   let val arginits =
-          concat (mapi (fn (entry:symentry, i) =>
+          concat (mapi (fn (entry:decl, i) =>
                            (case (#vtype entry)
                              of FmInt => "int " ^ #name entry
                                          ^ " = atoi(argv["
@@ -136,7 +141,7 @@ fun printprog {ddecls, gdecls, fdefns, main} =
                               | t => raise Unsupported
                                            ("Unsupported input type " ^
                                             typestr t) )
-                           ^ "]);\n") ddecls)
+                           ^ "]);\n") iodecls)
   in
       "#include <stdbool.h>\n#include<stdlib.h>\n#include <stdio.h>\n\n"
       ^ termwith ";\n" (map printdecl gdecls) ^ "\n"
@@ -145,4 +150,4 @@ fun printprog {ddecls, gdecls, fdefns, main} =
          then "void main (int argc, char** argv) {\n" ^ arginits
               ^ printsblock (valOf main) ^ "}\n"
          else "")
-  end 
+  end

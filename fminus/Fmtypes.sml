@@ -273,7 +273,7 @@ fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
   let val (newsyms, errs) = foldEither (addDecl Local)
                                        (locsyms: Symtable.symtable)
                                        (dlist: decl list)
-  in ({stree=DeclStmt [], pos=pos}, errs, newsyms) (* Empty it out! *)
+  in ({stree=DeclStmt dlist, pos=pos}, errs, newsyms) (* Empty it out! *)
   end
   | checkstmt outsyms locsyms fsyms 
               {stree=AssignStmt (var, expr), pos} = (
@@ -531,7 +531,7 @@ fun willreturn [] = false
     case (#stree stmt) of
         ReturnStmt _ => true
       | IfStmt (e, (_, thenblk), SOME (_, elseblk)) =>
-        willreturn thenblk andalso willreturn elseblk
+        willreturn thenblk andalso willreturn elseblk orelse willreturn stmts
       | _ => willreturn stmts 
 
 (** Procs: Add return type to argument types and call checkblock on the body *)
@@ -551,19 +551,20 @@ fun checkproc gsyms prevfsyms (top as {fname, params, rettype, pos},
           if rettype = FmUnit orelse willreturn (#2 sblock) (* stmtlist *)
           then []
           else [("Procedure " ^ fname ^ " may not return a value", pos)]
+      (* OK. should pull out vars? *)
       (*val initerrs = #1 (checkinit (gsyms @ params) sblock) *)
-      val breakerrs = ( print "checked vars for initialization\n";
-                        checkbreak (#2 sblock) (*stmtlist*) )
+      val breakerrs = checkbreak (#2 sblock)
       val newproc = (top, newblock)
   in (newproc, if funerrs @ returnerr (* @ initerrs*) @ breakerrs = [] then []
-               else (*"*** Errors in procedure " ^ fname
-                    ^ ": " ::*) (funerrs @ returnerr (*@ initerrs*) @ breakerrs))
+               else (*"*** Errors in procedure " ^ fname ^ ": " ::*)
+                   (* FIXME: put back initerrs *)
+                   (funerrs @ returnerr (*@ initerrs*) @ breakerrs))
   end
 
 
 
 (** must get new versions of fdefns and main, plus return errors *)
-fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
+fun checkprogram (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) =
   (* raise if symtables not empty? *)
   let val (newgsyms, gdeclerrs) =
           (* addDecl ignores the 'Global' for the iodecl type *)
@@ -606,7 +607,7 @@ fun checkprogram {iodecls, gdecls, fdefns, gsyms, fsyms, main} =
               end
             | NONE => (NONE, []) )
   in
-      ({iodecls=iodecls, gdecls=gdecls, fdefns=newfdefns,
-        gsyms=newgsyms, fsyms=newfsyms, main=newmain},
+      (PGM {iodecls=iodecls, gdecls=gdecls, fdefns=newfdefns,
+            gsyms=(SOME newgsyms), fsyms=(SOME newfsyms), main=newmain},
        gdeclerrs @ funerrs @ mainerrs)
   end
