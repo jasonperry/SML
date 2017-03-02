@@ -2,6 +2,7 @@
 signature ST_ENTRY = sig
     type entry
     val name : entry -> string
+    val typ : entry -> string
 end
 
 signature SYMTABLE = sig
@@ -14,6 +15,7 @@ signature SYMTABLE = sig
     val lookup: symtable -> string -> symentry option
     val merge: symtable -> symtable -> symtable
     val intersect: symtable -> symtable -> symtable
+    val printtable: symtable -> string
 end
 
 (** Do I really need a signature for a symbol table? *)
@@ -52,5 +54,10 @@ fun intersect (l1:symtable) ([]:symtable) = []
     if isSome (lookup l2 (E.name e))
     then e::(intersect rest l2)
     else (intersect rest l2)
+
+
+fun printtable [] = "\n"
+  | printtable (sym::syms) = (E.name sym) ^ ":" ^ (E.typ sym) ^ "; "
+                             ^ (printtable syms)
 
 end (* functor SymtableFn *)

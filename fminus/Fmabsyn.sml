@@ -36,6 +36,7 @@ type symentry = { name: string, vtype: valtype, sclass: storeclass,
 structure StEntry : ST_ENTRY = struct
     type entry = symentry
     fun name e = #name e
+    fun typ e = typestr (#vtype e)
 end
 
 (* Note: SymtableFn must be visible (toplevel mode) *)
@@ -49,6 +50,7 @@ type funentry = { fname: string,
 structure FtEntry : ST_ENTRY = struct
     type entry = funentry
     fun name e = #fname e
+    fun typ e = typestr (#rettype e)
 end
 
 (* Should I declare this inside the absyn structure? *)
