@@ -2,7 +2,7 @@
 
 open Fmabsyn;
 open Either;
-(* open Symtable; *)
+(* open Symtable; *) (* currently defined at top level *)
 
 (* should check decls and types in different fns? *)
 
@@ -552,100 +552,25 @@ fun checkinit stmts =
                                 @ errs )
                 end
               | ForStmt (_, _, _, _) => raise Empty (* must be AssignStmt *)
-              | _ => checkinit' stmts uninited errs
-                    (* TODO: Remaining stmts *)
-        ) 
+              | PrintStmt expr => 
+                checkinit' stmts uninited
+                           ((checkvars uninited (usedvars expr) (#pos stmt))
+                            @ errs)
+              | CallStmt expr =>
+                checkinit' stmts uninited
+                           ((checkvars uninited (usedvars expr) (#pos stmt))
+                            @ errs)
+              | ReturnStmt NONE => checkinit' stmts uninited errs
+              | ReturnStmt (SOME expr) =>
+                checkinit' stmts uninited
+                           ((checkvars uninited (usedvars expr) (#pos stmt))
+                            @ errs)
+              | BreakStmt => checkinit' stmts uninited errs
+        )
   in rev (checkinit' stmts [] [])
   end 
 
-                      
-(** Check that all variables used in expressions in a statement list are
-  * initialized.
-  * Return errors plus variables initialized in this block (for if/else) *)
-(* Code initializes global variables to zero or equivalent? *)
-(*fun checkinit (initedvars: symtable) [] = ([], initedvars)
-  | checkinit initedvars (stmt::stmts) =
-    (* This could go outside, doesn't close over anything. *)
-    let fun usedvars expr = (
-          case (#etree expr) of
-              ConstExpr _ => []
-            | VarExpr vname => [vname]
-            | NotExpr e => usedvars e
-            | BoolExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
-            | CompExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
-            | ArithExpr (_, e1, e2) => (usedvars e1) @ (usedvars e2)
-            | IfExpr (e1, e2, e3) => (usedvars e1) @ (usedvars e2)
-                                     @ (usedvars e3)
-            | FunCallExpr (_, elist) =>
-              List.concat (map usedvars elist) )
-        (** Lookup each variable in the list of inited ones.
-          * Keep the ones that aren't initialized. *)
-        fun checkvars ivars vlist =
-          (* closes over initedvars - no, for loop needs to add new. *)
-          let val lookups = ListPair.zip (vlist, map (vlookup ivars) vlist)
-              val nones =
-                  List.mapPartial (fn p => if isSome (#2 p) then NONE
-                                           else SOME (#1 p)) lookups
-          in map (fn v => ("Variable '" ^ v
-                           ^ "' may be used before initialization",
-                           (#pos stmt))) nones
-          end
-        val (funerrs, newinits) = (
-            case (#stree stmt) of
-                (* We could strip off types and just use a list of vars. *)
-                (* ** Assignment initializes. ** *)
-                AssignStmt (v, expr) => (* storage class doesn't matter. *)
-                 ( checkvars initedvars (usedvars expr),
-                   [{name=v, vtype=FmUnit, sclass=Local}] )
-                (* Add variables that were initialized in both branches *)
-              | IfStmt (cond, thenblock, SOME elseblock) =>
-                let val (thenerrs, theninits) =
-                        checkinit initedvars (#2 thenblock)
-                    val (elseerrs, elseinits) =
-                        checkinit initedvars (#2 elseblock)
-                in (checkvars initedvars (usedvars cond) @ thenerrs
-                    @ elseerrs,
-                    intersect_syms theninits elseinits)
-                end
-              | IfStmt (cond, thenblock, NONE) =>
-                (* vars inited in blocks are thrown away. *)
-                let val (thenerrs, _) = checkinit initedvars (#2 thenblock)
-                in (checkvars initedvars (usedvars cond) @ thenerrs,
-                    [])
-                end
-              | WhileStmt (cond, whileblock) =>
-                let val (whileerrs, _) = checkinit initedvars (#2 whileblock)
-                in (checkvars initedvars (usedvars cond) @ whileerrs, [])
-                end
-              | ForStmt (initstmt, cond, updatestmt, forblock) =>
-                let val (initerrs, newinit) = checkinit initedvars [initstmt]
-                    val conderrs = checkvars newinit (usedvars cond)
-                    (* have to use new var *)
-                    val (updateerrs, _) = checkinit newinit [updatestmt]
-                    val (blockerrs, _) = checkinit newinit (#2 forblock)
-                (* vars init'ed in the for loop initializer are kept
-                 * --but not the update, it might not happen *)
-                in (initerrs @ conderrs @ updateerrs @ blockerrs, newinit)
-                end
-              | PrintStmt expr =>
-                (checkvars initedvars (usedvars expr), [])
-              | CallStmt {etree=FunCallExpr (fname, argexps), typ=_, pos} =>
-                (List.concat (map (checkvars initedvars o usedvars) argexps),
-                 [])
-              | CallStmt _ => raise Empty (* shouldn't happen *) 
-              | ReturnStmt (SOME expr) =>
-                (checkvars initedvars (usedvars expr), [])
-              | ReturnStmt NONE => ([], [])
-              | BreakStmt => ([], [])
-        )
-    in
-        (* initalized variables accumulate tail-style, errors direct-style *)
-        let val (nexterrs, allinits) = checkinit (newinits @ initedvars) stmts
-        in
-            (funerrs @ nexterrs, allinits)
-        end
-    end
-*)
+
 (** Check if a statement list always returns *)
 fun willreturn [] = false
   | willreturn (stmt::stmts) = 
@@ -655,15 +580,20 @@ fun willreturn [] = false
         willreturn thenblk andalso willreturn elseblk orelse willreturn stmts
       | _ => willreturn stmts 
 
+(** Add params to a symtable *)
+fun addparams syms [] = []
+  | addparams syms ((name, vtype)::rest) =
+    Symtable.insert (addparams syms rest)
+                    ({name=name, vtype=vtype, sclass=Arg, cval=NONE})
+
 (** Procs: Add return type to argument types and call checkblock on the body *)
 fun checkproc gsyms prevfsyms (top as {fname, params, rettype, pos},
                                sblock (* as (blksyms, stmtlist)*)) =
-  (* FIXME: have to add params to funtable passed to block *)
   let val (newblock, funerrs) = 
           checkblock
-              (* Formerly: add return type to proc's argument symbol table *)
-              (* Now add to outer syms *)
-              (Symtable.insert gsyms
+              (* Formerly: add return type to proc's parameter symtable *)
+              (* Now add params and return type to outer syms *)
+              (Symtable.insert (addparams gsyms params)
                                {name="*return*", vtype=rettype,
                                 sclass=Local, cval=NONE})
               prevfsyms sblock
@@ -682,7 +612,6 @@ fun checkproc gsyms prevfsyms (top as {fname, params, rettype, pos},
                    (* FIXME: put back initerrs *)
                    (funerrs @ returnerr (*@ initerrs*) @ breakerrs))
   end
-
 
 
 (** must get new versions of fdefns and main, plus return errors *)
@@ -712,7 +641,7 @@ fun checkprogram (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) =
       val (newmain, mainerrs) = (
           case main
            of SOME (mainblock as (mainsyms, mainstmts)) =>
-              let (* val (initerrs, _) = checkinit newgsyms mainstmts *)
+              let val initerrs = checkinit mainstmts
                   val (newmblock, blkerrs) = 
                       checkblock
                           (Symtable.insert
@@ -722,8 +651,8 @@ fun checkprogram (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) =
                           newfsyms
                           mainblock 
                   val mainerrs =
-                      if blkerrs (* @ initerrs *) <> []
-                      then (*"*** Errors in main: " ::*) (blkerrs (*@ initerrs*))
+                      if blkerrs @ initerrs <> []
+                      then (*"*** Errors in main: " ::*) (blkerrs @ initerrs)
                       else []
               in (SOME newmblock, mainerrs)
               end

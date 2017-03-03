@@ -112,6 +112,7 @@ fun printproc ({fname, params, rettype, pos}, body) =
        FmInt => "int "
      | FmDouble => "double "
      | FmBool => "bool "
+     | FmUnit => "void "
      | _ => raise Unsupported ("Unsupported return type " ^
                                typestr rettype))
   ^ fname ^ "(" ^ joinwith ", " (map printparam params) ^ ")" (* TODO: params*)

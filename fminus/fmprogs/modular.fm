@@ -3,10 +3,10 @@
 
 (* what if the input is a symbolic formula? *)
 
-int MOD := 65521;
+const modulus : int := 65521;
 
-proc mod_add (x: int, y: int) -> int {
-    return (x+y) % MOD;
+proc mod-add (x: int, y: int) -> int {
+    return (x+y) % modulus;
 }
 
 proc fib(n: int) -> int {
