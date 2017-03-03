@@ -341,9 +341,7 @@ fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
       let val (checkedinit, msgs1, locsyms2) = (* new symbols allowed! *)
               checkstmt outsyms locsyms fsyms initstmt
           val (checkedcond as {etree=_, typ=ctype, pos=cpos}, msgs2) =
-              (print (Symtable.printtable outsyms);
-               print (Symtable.printtable locsyms2);
-               typeexpr (Symtable.merge locsyms2 outsyms, fsyms) cond)
+               typeexpr (Symtable.merge locsyms2 outsyms, fsyms) cond
           val (checkedupd, msgs3, locsyms3) =
               checkstmt outsyms locsyms2 fsyms updatestmt
           val (checkedbody, msgs4) =
