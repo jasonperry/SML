@@ -209,7 +209,7 @@ fun addDecl (sclass: storeclass) ({name, vtype, pos, dtype}:decl) syms =
        of VarDecl =>
           VAL (Symtable.insert syms {name=name, vtype=vtype,
                                      sclass=sclass, cval=NONE})
-       | ConstDecl expr => (
+       | ConstDecl expr => ( (* Const declarations need to be evaluated *)
            case evalConstExp syms expr
             of NONE =>
                ERR ("Non-constant initializer for " ^ name, pos)
@@ -579,7 +579,7 @@ fun willreturn [] = false
       | _ => willreturn stmts 
 
 (** Add params to a symtable *)
-fun addparams syms [] = []
+fun addparams syms [] = Symtable.empty
   | addparams syms ((name, vtype)::rest) =
     Symtable.insert (addparams syms rest)
                     ({name=name, vtype=vtype, sclass=Arg, cval=NONE})

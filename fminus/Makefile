@@ -42,6 +42,9 @@ Fmabsyn.uo: Fmabsyn.sml Symtable.uo # if uo changed, ui definitely did.
 Fmparse.sml Fmparse.sig: Fmparse.grm
 	$(MOSMLYACC) Fmparse.grm
 
+Fmlexer.sml Fmlexer.sig: Fmlexer.lex
+	$(MOSMLLEX) Fmlexer.lex
+
 Fmparse.ui: Fmparse.sig Fmabsyn.uo Symtable.uo
 	$(MOSMLC) -structure Symtable.ui Fmabsyn.ui Fmparse.sig 
 

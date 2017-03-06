@@ -2,11 +2,14 @@
 signature ST_ENTRY = sig
     type entry
     val name : entry -> string
-    val typ : entry -> string
+    val typ : entry -> string (* Added just for printing. *)
 end
 
+(** Do I really need a specified signature for a symbol table? *)
 signature SYMTABLE = sig
-    type symentry
+    (* type symentry *)
+    (* structure E: ST_ENTRY *)
+    type symentry (*= E.entry  (* Allowed! Now will be visible? *)*)
     type symtable
 
     val empty: symtable
@@ -18,13 +21,14 @@ signature SYMTABLE = sig
     val printtable: symtable -> string
 end
 
-(** Do I really need a signature for a symbol table? *)
-functor SymtableFn (E:ST_ENTRY) : SYMTABLE = struct
+(** Not an opaque constraint because symentries need to be inspected. *)
+functor SymtableFn (E:ST_ENTRY) :> SYMTABLE where type symentry = E.entry
+= struct
 
-type symentry = E.entry
+type symentry = E.entry (* redundant, but needed to match *)
 
 (* Possibly replace with binary tree or somesuch. *)
-type symtable = symentry list
+type symtable = E.entry list
 
 val empty: symtable = []
 
@@ -38,12 +42,6 @@ fun lookup ([]:symtable) symname = NONE
   | lookup (e::rest) symname = 
     if E.name e = symname then SOME e
     else lookup rest symname
-
-(** Look up in function name symbol table *)
-(* fun flookup ([]:ftable) name = NONE
-  | flookup ((entry as {fname, params, rettype, pos})::rest) name =
-    if name = fname then SOME entry
-    else flookup rest name *)
 
 fun merge (t1:symtable) (t2:symtable) = t1 @ t2
 
@@ -59,5 +57,15 @@ fun intersect (l1:symtable) ([]:symtable) = []
 fun printtable [] = "\n"
   | printtable (sym::syms) = (E.name sym) ^ ":" ^ (E.typ sym) ^ "; "
                              ^ (printtable syms)
-
 end (* functor SymtableFn *)
+
+(* Tests for opacity issue *)
+structure Myentry : ST_ENTRY = struct
+  type entry = {name: string, typ: string}
+  fun name (e:entry) = #name e
+  fun typ (e:entry) = #typ e               
+end
+
+(* SML/NJ requires parentheses for the functor application, mosml doesn't *)
+structure Mytable = SymtableFn (Myentry)
+val tab = Mytable.insert (Mytable.empty) ({name="x", typ="str"})
