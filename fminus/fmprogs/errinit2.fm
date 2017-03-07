@@ -1,0 +1,16 @@
+main {
+
+     var x: int;
+     var y: int;
+
+     print x;
+     x :=  y + 5;
+
+     var z: int;
+     (* z := 6; *)
+     var i: int;
+     for (i := 0; i < z; i:=i+1) {
+         print z;
+     }
+     print 2*i;
+}

@@ -318,6 +318,7 @@ AssocExpr:
   | NAME LPAR Args RPAR                 { {etree=FunCallExpr ($1, $3),
                                            typ=Untyped,
                                            pos=Location.getCurrentLocation()} }
+  | LPAR AssocExpr RPAR                 { $2 }
 ;
 // StringExpr // for concatenation and such.
 // probably should just include as assocExpr and save it for the typechecker.

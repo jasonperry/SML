@@ -2,7 +2,7 @@
 
 open Fmabsyn;
 open Either;
-(* open Symtable; *) (* currently defined at top level *)
+(* open Symtable; *) (* currently defined at header level *)
 
 (* should check decls and types in different fns? *)
 
@@ -590,15 +590,14 @@ fun addparams syms [] = syms
                     ({name=name, vtype=vtype, sclass=Arg, cval=NONE})
 
 (** Procs: Add return type to argument types and call checkblock on the body *)
-fun checkproc gsyms prevfsyms (top as {fname, params, rettype, pos},
+fun checkproc gsyms prevfsyms (header as {fname, params, rettype, pos},
                                sblock (* as (blksyms, stmtlist)*)) =
   (* Formerly: add return type to proc's parameter symtable *)
   (* Now add params and return type to outer syms *)
   let val procsyms = Symtable.insert (addparams gsyms params)
                                      {name="*return*", vtype=rettype,
                                       sclass=Local, cval=NONE}
-      val _ = debugPrint (Symtable.printtable gsyms ^ "\n" ^
-                          Symtable.printtable procsyms)
+      val _ = debugPrint ("Proc symtable: " ^ Symtable.toString procsyms)
       val (newblock, funerrs) = checkblock procsyms prevfsyms sblock
       (* Additional non-modifying analyses: return, break, inited variables.
        *  They don't return new structures. *)
@@ -609,11 +608,10 @@ fun checkproc gsyms prevfsyms (top as {fname, params, rettype, pos},
       (* Don't have to pass any syms to check uninited *)
       val initerrs = checkinit (#2 sblock)
       val breakerrs = checkbreak (#2 sblock)
-      val newproc = (top, newblock)
-  in (newproc, if funerrs @ returnerr (* @ initerrs*) @ breakerrs = [] then []
+      val newproc = (header, newblock)
+  in (newproc, if funerrs @ returnerr @ initerrs @ breakerrs = [] then []
                else (*"*** Errors in procedure " ^ fname ^ ": " ::*)
-                   (* FIXME: put back initerrs *)
-                   (funerrs @ returnerr (*@ initerrs*) @ breakerrs))
+                   (funerrs @ returnerr @ initerrs @ breakerrs))
   end
 
 
@@ -638,7 +636,7 @@ fun checkprogram (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) =
                           (newfdefn::accdefns) (* bottom first *)
                           (newerrs @ procerrs @ accerrs) (* reverse at end *)
             end )
-      val _ = debugPrint (Symtable.printtable newgsyms)
+      val _ = debugPrint ("Global symtable: " ^ Symtable.toString newgsyms)
       val (newfdefns, funerrs) = checkaccum fdefns [] []
       val newfsyms = Funtable.fromList (map #1 newfdefns)
       (* main is treated separately (for now) *)

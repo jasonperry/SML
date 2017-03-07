@@ -1,0 +1,17 @@
+(* test whether initialization in a for loop is accepted. *)
+
+proc dostuff(n: int) {
+    var i: int;
+    var sum: int;
+    sum := 0;
+    for (i:=0; i < n; i:=i+2) {
+        sum := sum + i;
+        (* should test shadowing too *)
+    }
+    print sum;
+    print i;
+}
+
+main { dostuff(20); }
+        
+     

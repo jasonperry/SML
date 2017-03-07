@@ -1,0 +1,24 @@
+indata n: int;
+
+const maxval : int := 23;
+
+proc sum(n: int) -> int {
+     var sum: int;
+     var limit: int;
+     sum := 0;
+     print n;
+     if (n < maxval) {
+        limit := n;
+     } else {
+       limit := maxval;
+     }
+     (* limit := if (n < maxval) then n else maxval; *) (* TODO: fix *)
+     var i: int;
+     for (i := 0; i <= limit; i := i+1) {
+         sum := sum + i;
+     }
+     (* maxval := 7000; *) (* error test *)
+     return sum;
+}
+
+main { print sum(n); }

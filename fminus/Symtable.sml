@@ -2,7 +2,7 @@
 signature ST_ENTRY = sig
     type entry
     val name : entry -> string
-    val typ : entry -> string (* Added just for printing. *)
+    val toString : entry -> string
 end
 
 (** Do I really need a specified signature for a symbol table? *)
@@ -18,7 +18,7 @@ signature SYMTABLE = sig
     val lookup: symtable -> string -> symentry option
     val merge: symtable -> symtable -> symtable
     val intersect: symtable -> symtable -> symtable
-    val printtable: symtable -> string
+    val toString: symtable -> string
 end
 
 (** Not an opaque constraint because symentries need to be inspected. *)
@@ -54,9 +54,9 @@ fun intersect (l1:symtable) ([]:symtable) = []
     else (intersect rest l2)
 
 
-fun printtable [] = "\n"
-  | printtable (sym::syms) = (E.name sym) ^ ":" ^ (E.typ sym) ^ "; "
-                             ^ (printtable syms)
+fun toString [] = "\n"
+  | toString (sym::syms) = E.toString sym ^ "; " ^ (toString syms)
+
 end (* functor SymtableFn *)
 
 (*

@@ -42,20 +42,21 @@ fun printval (IntVal n) = Int.toString n
   | printval (BoolVal b) = if b then "1" else "0"
   | printval (DoubleVal d) = Real.toString d
 
-(** Print expression in C code. *)
+(** Print expression in C code. 
+  * Include parens, to keep precedence indicated by absyn tree. *)
 fun printexpr expr =
   case (#etree expr)
    of ConstExpr ce => printval ce
     | VarExpr v => v
     | NotExpr expr => "!(" ^ printexpr expr ^ ")"
     | BoolExpr (And, e1, e2) =>
-      printexpr e1 ^ " && " ^ printexpr e2
+      "(" ^ printexpr e1 ^ " && " ^ printexpr e2 ^ ")"
     | BoolExpr (Or, e1, e2) =>
-      printexpr e1 ^ " || " ^ printexpr e2
+      "(" ^ printexpr e1 ^ " || " ^ printexpr e2 ^ ")"
     | CompExpr (oper, e1, e2) =>
-      printexpr e1 ^ " " ^ (relopstring oper) ^ " " ^ printexpr e2
+      "(" ^ printexpr e1 ^ " " ^ (relopstring oper) ^ " " ^ printexpr e2 ^ ")"
     | ArithExpr (oper, e1, e2) =>
-      printexpr e1 ^ " " ^ (arithopstring oper) ^ " " ^ printexpr e2
+      "(" ^ printexpr e1 ^ " " ^ (arithopstring oper) ^ " " ^ printexpr e2 ^ ")"
     | IfExpr (ifexpr, thenexpr, elseexpr) =>
       printexpr ifexpr ^ " ? " ^ printexpr thenexpr ^ " : "
       ^ printexpr elseexpr

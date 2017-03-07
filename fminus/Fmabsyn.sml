@@ -20,6 +20,10 @@ datatype constval = IntVal of int
                   | DoubleVal of real
                   | BoolVal of bool
 
+fun conststr (IntVal i) = Int.toString i
+  | conststr (DoubleVal r) = Real.toString r
+  | conststr (BoolVal b) = Bool.toString b
+
 (* TODO: add index type *)
 datatype storeclass = Indata
                     | Outdata
@@ -28,15 +32,23 @@ datatype storeclass = Indata
                     | Arg
                     | Const (* DON'T keep value here; eval'ed to symtable *)
 
+fun sclassstr Indata = "Indata"
+  | sclassstr Outdata = "Outdata"
+  | sclassstr Global = "Global"
+  | sclassstr Local = "Local"
+  | sclassstr Arg = "Arg"
+  | sclassstr Const = "Const"
+                          
 type symentry = { name: string, vtype: valtype, sclass: storeclass,
                  cval: constval option }
-
 
 (* Think we don't want opaque here. still want to use symentry on our own. *)
 structure StEntry : ST_ENTRY = struct
     type entry = symentry
     fun name e = #name e
-    fun typ e = typestr (#vtype e)
+    fun toString {name, vtype, sclass, cval} =
+      name ^ ": type=" ^ typestr vtype ^ " sclass=" ^ sclassstr sclass
+      ^ (if isSome cval then " constval=" ^ conststr (valOf cval) else "")
 end
 
 (* Note: SymtableFn must be visible (toplevel mode) *)
@@ -50,7 +62,10 @@ type funentry = { fname: string,
 structure FtEntry : ST_ENTRY = struct
     type entry = funentry
     fun name e = #fname e
-    fun typ e = typestr (#rettype e)
+    fun toString {fname, params, rettype, pos} =
+      fname ^ "("
+      ^ concat (map (fn (nm, typ) => nm ^ typestr typ ^ ",") params)
+      ^ ")" ^ " -> " ^ typestr rettype
 end
 
 (* Should I declare this inside the absyn structure? *)
@@ -97,7 +112,7 @@ withtype stmt = {stree: stree, pos: srcpos}
      and sblock = Symtable.symtable * ({stree: stree, pos: srcpos} list)
 
 type fdecl = funentry (* same type *)
-                                   
+             
 type fdefn = fdecl * sblock
 
 (* Input/output data declarations, then globals *)

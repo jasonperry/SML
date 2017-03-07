@@ -6,7 +6,7 @@
 const modulus : int := 65521;
 
 proc mod-add (x: int, y: int) -> int {
-    return (x+y) % modulus;
+    return (x + y) % modulus;
 }
 
 proc fib(n: int) -> int {
