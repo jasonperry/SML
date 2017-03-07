@@ -59,6 +59,7 @@ fun printtable [] = "\n"
                              ^ (printtable syms)
 end (* functor SymtableFn *)
 
+(*
 (* Tests for opacity issue *)
 structure Myentry : ST_ENTRY = struct
   type entry = {name: string, typ: string}
@@ -69,3 +70,4 @@ end
 (* SML/NJ requires parentheses for the functor application, mosml doesn't *)
 structure Mytable = SymtableFn (Myentry)
 val tab = Mytable.insert (Mytable.empty) ({name="x", typ="str"})
+*)

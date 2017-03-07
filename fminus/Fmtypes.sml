@@ -8,6 +8,11 @@ open Either;
 
 (* exception InternalErr of string (* for things that shouldn't happen *) *)
 
+val debug = true
+fun debugPrint s = if debug then
+                       TextIO.output (TextIO.stdErr, s)
+                   else ()
+
 (** Attempt to reduce an expression to a constval *)
 fun evalConstExp syms (e as {etree, typ=_, pos=_}: expr) =
   case etree
@@ -579,7 +584,7 @@ fun willreturn [] = false
       | _ => willreturn stmts 
 
 (** Add params to a symtable *)
-fun addparams syms [] = Symtable.empty
+fun addparams syms [] = syms
   | addparams syms ((name, vtype)::rest) =
     Symtable.insert (addparams syms rest)
                     ({name=name, vtype=vtype, sclass=Arg, cval=NONE})
@@ -587,14 +592,14 @@ fun addparams syms [] = Symtable.empty
 (** Procs: Add return type to argument types and call checkblock on the body *)
 fun checkproc gsyms prevfsyms (top as {fname, params, rettype, pos},
                                sblock (* as (blksyms, stmtlist)*)) =
-  let val (newblock, funerrs) = 
-          checkblock
-              (* Formerly: add return type to proc's parameter symtable *)
-              (* Now add params and return type to outer syms *)
-              (Symtable.insert (addparams gsyms params)
-                               {name="*return*", vtype=rettype,
-                                sclass=Local, cval=NONE})
-              prevfsyms sblock
+  (* Formerly: add return type to proc's parameter symtable *)
+  (* Now add params and return type to outer syms *)
+  let val procsyms = Symtable.insert (addparams gsyms params)
+                                     {name="*return*", vtype=rettype,
+                                      sclass=Local, cval=NONE}
+      val _ = debugPrint (Symtable.printtable gsyms ^ "\n" ^
+                          Symtable.printtable procsyms)
+      val (newblock, funerrs) = checkblock procsyms prevfsyms sblock
       (* Additional non-modifying analyses: return, break, inited variables.
        *  They don't return new structures. *)
       val returnerr = 
@@ -633,6 +638,7 @@ fun checkprogram (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) =
                           (newfdefn::accdefns) (* bottom first *)
                           (newerrs @ procerrs @ accerrs) (* reverse at end *)
             end )
+      val _ = debugPrint (Symtable.printtable newgsyms)
       val (newfdefns, funerrs) = checkaccum fdefns [] []
       val newfsyms = Funtable.fromList (map #1 newfdefns)
       (* main is treated separately (for now) *)
@@ -642,8 +648,8 @@ fun checkprogram (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) =
               let val initerrs = checkinit mainstmts
                   val (newmblock, blkerrs) = 
                       checkblock
-                          (Symtable.insert
-                               newgsyms (* add return type *)
+                          (Symtable.insert (* add return type *)
+                               newgsyms 
                                {name="*return*", vtype=FmUnit, sclass=Local,
                                 cval=NONE})
                           newfsyms
