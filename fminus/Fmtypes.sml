@@ -205,6 +205,13 @@ fun typeexpr (decls: Symtable.symtable * Funtable.symtable)
       in ({etree=FunCallExpr (fname, fnargs), typ=typ, pos=pos}, msgs)
       end )
 
+(** Helper function for checking conditionals and ensuring they're bools. *)
+fun typecond decls expr =
+  let val (newexpr, errs) = typeexpr decls expr
+  in if #typ newexpr = FmBool then (newexpr, errs)
+     else (newexpr, errs @ [("Non-boolean type for condition", #pos newexpr)])
+  end
+                                                           
 (** Add a declaration to a local symtable, or return error *)
 fun addDecl (sclass: storeclass) ({name, vtype, pos, dtype}:decl) syms =
   if isSome (Symtable.lookup syms name)
@@ -257,23 +264,26 @@ fun checkreachable ([]: stmt list) = []
       | BreakStmt => [("Unreachable code after break", pos)] 
       | _ => checkreachable (stmt2::stmts)
 
-(** Check that a break is inside a loop *)
+(** Check that a break is inside a loop; the bodies of for and while loops
+  *  are skipped over, breaks are flagged, and we recurse inside ifs. *)
 fun checkbreak [] = []
   | checkbreak ({stree, pos}::stmts) =
     case stree of
         BreakStmt => [("Break statement used outside of loop", pos)]
-      | IfStmt (_, (_, thenstmts), SOME (_, elsestmts)) =>
+      | IfStmt (_, (_, thenstmts), eliflist, SOME (_, elsestmts)) =>
         (checkbreak thenstmts)
+        @ List.concat (map (fn (_, (_, elifstmt)) => checkbreak elifstmt)
+                           eliflist)
         @ (checkbreak elsestmts)
         @ (checkbreak stmts)
-      | IfStmt (_, (_, thenstmts), NONE) =>
+      | IfStmt (_, (_, thenstmts), eliflist, NONE) =>
         (checkbreak thenstmts) @ (checkbreak stmts)
       | _ => checkbreak stmts
 
 
-(** Typecheck single statement, returning new statement and list of errors,
-  *  and now a list of symbols *)
-(* Only take most local matching name. If type doesn't match, then error. *)
+(** Typecheck single statement, returning new statement, list of errors,
+  *  and list of newly-declared symbols for constructing the symtable. 
+  * Only take most local matching name. If type doesn't match, then error. *)
 fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
   let val (newsyms, errs) = foldEither (addDecl Local)
                                        (locsyms: Symtable.symtable)
@@ -304,26 +314,36 @@ fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
     end )
 
   | checkstmt outsyms locsyms fsyms 
-              {stree=IfStmt (cond, thenblock, elseblock), pos} = (
-      let val (checkedcond as {etree=_, typ=ctype, pos=pos1}, msgs1) =
-              typeexpr (Symtable.merge locsyms outsyms, fsyms) cond
-          val (checkedthen, msgs2) =
-              checkblock (Symtable.merge outsyms locsyms) fsyms thenblock
-          val (checkedelse, msgs3) = (
+              {stree=IfStmt (cond, thenblock, elifs, elseblock), pos} = (
+      let val varsyms = Symtable.merge locsyms outsyms
+          val (checkedcond, conderrs) =
+              typecond (varsyms, fsyms) cond
+          val (checkedthen, thenerrs) =
+              checkblock varsyms fsyms thenblock
+          val (checkedelifs, eliferrs) = (* major surgery *)
+              let val checkedconds = (* expr * errs list *)
+                      map (fn (c, _) => typecond (varsyms, fsyms) c) elifs
+                  val checkedblocks = (* sblock * errs list *)
+                      map (fn (_, b) => checkblock varsyms fsyms b) elifs
+                  val (conds, conderrs) = ListPair.unzip checkedconds
+                  val (blocks, blockerrs) = ListPair.unzip checkedblocks
+                  (* Intersperse cond errors with their respective blocks. 
+                   *  All errors have to be exported to the statement. *)
+                  val appderrs =
+                      List.concat (ListPair.map op@ (conderrs, blockerrs))
+              in (ListPair.zip (conds, blocks), appderrs)
+              end
+          val (checkedelse, elseerrs) = (
               case elseblock 
                of SOME sblock => 
-                  let val (res, msgs) =
-                          checkblock (Symtable.merge outsyms locsyms)
-                                     fsyms sblock
+                  let val (res, msgs) = checkblock varsyms fsyms sblock
                   in (SOME res, msgs)
                   end               
                 | NONE => (elseblock, []) )
-          val newerrs = if ctype <> FmBool
-                       then [("Non-Boolean condition in if statement", pos)]
-                       else []
-      in ({stree=IfStmt (checkedcond, checkedthen, checkedelse), pos=pos},
-          newerrs @ msgs1 @ msgs2 @ msgs3,
-          locsyms) (* syms in then/else blocks not exported *)
+      in ({stree=IfStmt (checkedcond, checkedthen, checkedelifs, checkedelse),
+           pos=pos},
+          conderrs @ thenerrs @ eliferrs @ elseerrs,
+          locsyms) (* syms in then/elif/else blocks not exported *)
       end )
 
   | checkstmt outsyms locsyms fsyms
@@ -331,7 +351,7 @@ fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
       let val (checkedcond as {etree=_, typ=ctype, pos=pos1}, msgs1) =
               typeexpr (Symtable.merge locsyms outsyms, fsyms) cond
           val (checkedbody, msgs2) =
-              checkblock (Symtable.merge outsyms locsyms) fsyms bblock 
+              checkblock (Symtable.merge locsyms outsyms) fsyms bblock 
           val newerrs = if ctype <> FmBool
                        then [("Non-Boolean condition in while statement: type "
                               ^ (typestr ctype), pos)]
@@ -438,7 +458,7 @@ and checkblock outsyms fsyms ((lsyms, stmts): sblock) =
                          * so can keep all syms *)
             end 
         val (newblock, errs) = chkblockacc stmts Symtable.empty [] []
-    in (* add reachability check here. *)
+    in 
         (newblock, errs @ (checkreachable stmts))
     end 
 
@@ -451,10 +471,10 @@ fun listremove (a, []) = []  (* tupled for std library's foldl *)
 fun listdiff blist alist = foldl listremove blist alist
 fun listintersect [] _ = []
   | listintersect _ [] = []
-  | listintersect (a::rest) b = if inlist a b
-                                (* get rid of after finding once *)
-                                then a::(listintersect rest (listremove (a, b)))
-                                else listintersect rest b
+  | listintersect (a::rest) b =
+    if inlist a b then (* get rid of after finding once *)
+        a::(listintersect rest (listremove (a, b)))
+    else listintersect rest b
 
 (** Find any uninited variables in a block.
   * Propagates a list of unininitialized variables, which are added to at
@@ -498,10 +518,12 @@ fun checkinit stmts =
                     | ForStmt (initstmt, _, _, _) =>
                       (* For loop's initializer can init, block can't *)
                       initexports' localvars (initstmt::stmts)
-                    | IfStmt (_, _, NONE) => initexports' localvars stmts
-                    | IfStmt (_, thenblock, SOME elseblock) =>
-                      (isectexports [#2 thenblock, #2 elseblock] @
-                       (initexports' localvars stmts))
+                    | IfStmt (_, _, _, NONE) => initexports' localvars stmts
+                    | IfStmt (_, thenblock, elifs, SOME elseblock) =>
+                      (isectexports
+                           (#2 thenblock::(map #2 (map #2 elifs)
+                                           @ [#2 elseblock]))
+                       @ (initexports' localvars stmts))
                     | _ => initexports' localvars stmts )
         in initexports' [] stmts
         end
@@ -509,10 +531,12 @@ fun checkinit stmts =
         * to count as initialize, so we intersect *)
       and isectexports ([]: stmt list list) = []
         (* Generalizes to multiple if, elsif, else blocks *)
+        | isectexports [slist] = initexports slist
         | isectexports (slist::rest) =
           listintersect (initexports slist) (isectexports rest)
 
-      (* main loop, accumulating uninited vars and errs *)
+      (* main loop, accumulating uninited vars and errs (string * pos) *)
+      (* TODO: factor out the concatenation parts *)
       fun checkinit' [] uninited errs = errs
         | checkinit' (stmt::stmts) uninited errs = (
             case (#stree stmt)
@@ -523,24 +547,36 @@ fun checkinit stmts =
                            (listremove (varname, uninited))
                            ((checkvars uninited (usedvars expr) (#pos stmt))
                             @ errs)
-              | IfStmt (cond, (_, ifstmts), NONE) =>
+              | IfStmt (cond, (_, ifstmts), elifs, NONE) =>
                 checkinit' stmts
                            uninited
                            ((checkvars uninited (usedvars cond) (#pos stmt))
-                            @ checkinit' ifstmts [] []
+                            @ List.concat (map (fn (_, (_, sts)) =>
+                                                   checkinit' sts uninited [])
+                                               elifs)
+                            @ checkinit' ifstmts uninited []
                             @ errs)
-              | IfStmt (cond, (_, ifstmts), SOME (_, elsstmts)) =>
-                checkinit' stmts (* Remove variables initialized in both blocks *)
-                           (listdiff uninited (isectexports [ifstmts, elsstmts]))
-                           ((checkvars uninited (usedvars cond) (#pos stmt))
-                            @ checkinit' elsstmts uninited []
-                            @ checkinit' ifstmts uninited [] (* upside down *)
-                            @ errs)
+              | IfStmt (cond, (_, ifstmts), elifs, SOME (_, elsstmts)) =>
+                let val exportedinits = (isectexports (ifstmts::elsstmts::
+                                                       (map (#2 o #2) elifs)))
+                in 
+                    checkinit'
+                        stmts (* Remove variables inited in all blocks *)
+                        (listdiff uninited exportedinits)
+                        ((checkvars uninited (usedvars cond) (#pos stmt))
+                         (* pass same uninited *)
+                         @ checkinit' elsstmts uninited []
+                         @ List.concat (map (fn (_, (_, sts)) =>
+                                                checkinit' sts uninited [])
+                                            elifs)
+                         @ checkinit' ifstmts uninited [] (* upside down *)
+                         @ errs)
+                end
               | WhileStmt (cond, body) =>
                 checkinit' stmts
                            uninited (* body might not run, no inits exported *)
                            ((checkvars uninited (usedvars cond) (#pos stmt))
-                            @ (checkinit' (#2 body) [] [])
+                            @ (checkinit' (#2 body) uninited [])
                             @ errs)
               | ForStmt ({stree=AssignStmt (varname, initexpr), pos=pos},
                          cond, updstmt, body) =>
@@ -579,8 +615,11 @@ fun willreturn [] = false
   | willreturn (stmt::stmts) = 
     case (#stree stmt) of
         ReturnStmt _ => true
-      | IfStmt (e, (_, thenblk), SOME (_, elseblk)) =>
-        willreturn thenblk andalso willreturn elseblk orelse willreturn stmts
+      | IfStmt (e, (_, thensts), elifs, SOME (_, elsests)) =>
+        let val elifsblocks = map (#2 o #2) elifs
+        in (List.all willreturn (thensts::elsests::elifsblocks))
+           orelse willreturn stmts
+        end 
       | _ => willreturn stmts 
 
 (** Add params to a symtable *)
@@ -613,7 +652,6 @@ fun checkproc gsyms prevfsyms (header as {fname, params, rettype, pos},
                else (*"*** Errors in procedure " ^ fname ^ ": " ::*)
                    (funerrs @ returnerr @ initerrs @ breakerrs))
   end
-
 
 (** must get new versions of fdefns and main, plus return errors *)
 fun checkprogram (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) =

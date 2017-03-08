@@ -32,6 +32,7 @@
        | "if"           => IF
        | "then"         => THEN
        | "else"         => ELSE
+       | "elif"         => ELIF
        | "while"        => WHILE
        | "for"          => FOR
        | "and"          => AND

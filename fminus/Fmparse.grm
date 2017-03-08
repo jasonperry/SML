@@ -29,8 +29,7 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %token INDATA OUTDATA CONST
 %token AND OR NOT
 %token TRUE FALSE
-%token BREAK
-%token ELSE FOR IF IMPORT MAIN PROC PRINT RETURN THEN VAR WHILE
+%token BREAK ELIF ELSE FOR IF IMPORT MAIN PROC PRINT RETURN THEN VAR WHILE
 %token LBRACE RBRACE LPAR RPAR LSQUARE RSQUARE
 %token EOF
 %token JUNK
@@ -61,6 +60,7 @@ val lneg = fn b => if b = 0 then 1 else 0 *)
 %type <Fmabsyn.stmt> Stmt LineStmt BlockStmt
 %type <Fmabsyn.stmt> DeclStmt AssnStmt IfStmt WhileStmt PrintStmt CallStmt
 %type <Fmabsyn.stmt> ReturnStmt BreakStmt ForStmt
+%type <(Fmabsyn.expr * (Symtable.symtable * Fmabsyn.stmt list)) list> Elifs
 %type <valtype> Typeexp Ftype 
 %type <Fmabsyn.expr> Expr VarExpr RelExpr AssocExpr
 %%
@@ -199,10 +199,15 @@ WhileStmt:
                                            pos=Location.getCurrentLocation()} }
 ;
 IfStmt:
-    IF LPAR Expr RPAR Sblock             { {stree=IfStmt ($3, $5, NONE),
-                                            pos=Location.getCurrentLocation()} }
-  | IF LPAR Expr RPAR Sblock ELSE Sblock { {stree=IfStmt ($3, $5, SOME $7),
-                                            pos=Location.getCurrentLocation()} }
+    IF LPAR Expr RPAR Sblock Elifs      { {stree=IfStmt ($3, $5, $6, NONE),
+                                           pos=Location.getCurrentLocation()} }
+  | IF LPAR Expr RPAR Sblock Elifs ELSE Sblock
+                                        { {stree=IfStmt ($3, $5, $6, SOME $8),
+                                           pos=Location.getCurrentLocation()} }
+;
+Elifs:
+    /* empty */                         { [] }
+  | ELIF LPAR Expr RPAR Sblock Elifs    { ($3, $5)::$6 }
 ;
 PrintStmt:
     PRINT Expr                          { {stree=PrintStmt $2,

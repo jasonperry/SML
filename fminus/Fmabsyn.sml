@@ -101,7 +101,7 @@ type decl = {name: string, vtype: valtype, pos: srcpos, dtype: decltype}
 datatype stree = 
          DeclStmt of decl list (* These will be deleted on analysis *)
          | AssignStmt of string * expr (* lvalue type? *)
-         | IfStmt of expr * sblock * sblock option
+         | IfStmt of expr * sblock * (expr * sblock) list * sblock option
          | WhileStmt of expr * sblock
          | ForStmt of stmt * expr * stmt * sblock
          | PrintStmt of expr

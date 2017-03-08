@@ -76,8 +76,10 @@ fun printstmt {stree, pos} =
   case stree 
    of DeclStmt dlist => termwith ";\n" (map printdecl dlist)
     | AssignStmt (var, expr) => var ^ " = " ^ printexpr expr ^ ";"
-    | IfStmt (cond, thenblk, elseopt) =>
-      "if (" ^ printexpr cond ^ ")" ^ printsblock thenblk 
+    | IfStmt (cond, thenblk, elifs, elseopt) =>
+      "if (" ^ printexpr cond ^ ")" ^ printsblock thenblk
+      ^ concat (map (fn (cond, blk) => "else if (" ^ printexpr cond ^ ")"
+                                       ^ printsblock blk) elifs)
       ^ (if isSome elseopt
          then "else " ^ printsblock (valOf elseopt)
          else "")

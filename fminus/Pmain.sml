@@ -53,8 +53,9 @@ fun printErrs (errlist: errormsg list) lexinfo =
 fun main () =
   case CommandLine.arguments ()
    of [] =>
-      TextIO.output(TextIO.stdErr, "Usage: " ^ CommandLine.name()
-                                   ^ " <source.fm>\n")
+      (TextIO.output(TextIO.stdErr, "Usage: " ^ CommandLine.name()
+                                    ^ " <source.fm>\n");
+       false)
     | fname::_ => 
       let val instrm = Nonstdio.open_in_bin fname
           val lexbuf = createLexerStream instrm
@@ -62,10 +63,13 @@ fun main () =
 	               handle exn => (BasicIO.close_in instrm; raise exn)
           val (checkedpgm, errs) = Fmtypes.checkprogram pgm
       in
-          if errs = [] 
-          then TextIO.output (TextIO.stdOut, FmtoC.printprog checkedpgm)
-          else printErrs errs (fname, instrm, lexbuf);
-          BasicIO.close_in instrm
+          if errs = [] then
+              (TextIO.output (TextIO.stdOut, FmtoC.printprog checkedpgm);
+               true)
+          else (printErrs errs (fname, instrm, lexbuf); 
+                BasicIO.close_in instrm;
+                false)
       end
 
-val _ = main ()
+val _ = if main () then Process.exit Process.success
+        else Process.exit Process.failure
