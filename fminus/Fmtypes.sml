@@ -286,9 +286,10 @@ fun checkbreak [] = []
   * Only take most local matching name. If type doesn't match, then error. *)
 fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
   let val (newsyms, errs) = foldEither (addDecl Local)
+                                       (* Why? Why not empty table? *)
                                        (locsyms: Symtable.symtable)
                                        (dlist: decl list)
-  in ({stree=DeclStmt dlist, pos=pos}, errs, newsyms) (* Empty it out! *)
+  in ({stree=DeclStmt dlist, pos=pos}, errs, newsyms) (* Empty it out? *)
   end
   | checkstmt outsyms locsyms fsyms 
               {stree=AssignStmt (var, expr), pos} = (
@@ -536,7 +537,7 @@ fun checkinit stmts =
           listintersect (initexports slist) (isectexports rest)
 
       (* main loop, accumulating uninited vars and errs (string * pos) *)
-      (* TODO: factor out the concatenation parts *)
+      (* TODO: factor out the concatenation parts? *)
       fun checkinit' [] uninited errs = errs
         | checkinit' (stmt::stmts) uninited errs = (
             case (#stree stmt)
