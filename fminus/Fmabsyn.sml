@@ -1,13 +1,15 @@
 (* Fmabsyn.sml  -- the abstract syntax datatype *)
-(* Possibly all this stuff in a file named "FmDefs" that everything depends
- * on. *)
-type srcpos = Location.Location
-type errormsg = string * srcpos
+
+(* Possibly put all these decls in a file named "FmDefs" that
+ * everything depends on. *)
+type srcpos = Location.Location type
+errormsg = string * srcpos
 
 (** TYPE AND SYMBOL TABLE DECLARATIONS *)
 (* Some subtyping? Eq, Ord, Num, *)
 datatype valtype = FmInt | FmDouble | FmBool | FmUnit | Untyped
                    (* | FmArray of valtype * int *)
+
 (* Strings for types, for use in type checker messages *)
 fun typestr FmInt = "int"
   | typestr FmDouble = "double"
@@ -75,6 +77,8 @@ structure Funtable = SymtableFn (FtEntry)
 (** ACTUAL ABSTRACT SYNTAX SECTION **)
 structure Fmabsyn = struct
 
+type varname = string
+
 datatype relop = Eq | Ne | Gt | Ge | Lt | Le
 (* TODO: bitwise not, shifts *)
 datatype arithop = Plus | Minus | Times | Div | Mod | Xor | Bitand | Bitor
@@ -112,7 +116,7 @@ withtype stmt = {stree: stree, pos: srcpos}
      and sblock = Symtable.symtable * ({stree: stree, pos: srcpos} list)
 
 type fdecl = funentry (* same type *)
-             
+
 type fdefn = fdecl * sblock
 
 (* Input/output data declarations, then globals *)

@@ -8,7 +8,7 @@ open Either;
 
 (* exception InternalErr of string (* for things that shouldn't happen *) *)
 
-val debug = true
+val debug = false
 fun debugPrint s = if debug then
                        TextIO.output (TextIO.stdErr, s)
                    else ()
@@ -211,7 +211,7 @@ fun typecond decls expr =
   in if #typ newexpr = FmBool then (newexpr, errs)
      else (newexpr, errs @ [("Non-boolean type for condition", #pos newexpr)])
   end
-                                                           
+
 (** Add a declaration to a local symtable, or return error *)
 fun addDecl (sclass: storeclass) ({name, vtype, pos, dtype}:decl) syms =
   if isSome (Symtable.lookup syms name)
@@ -284,7 +284,8 @@ fun checkbreak [] = []
 (** Typecheck single statement, returning new statement, list of errors,
   *  and list of newly-declared symbols for constructing the symtable. 
   * Only take most local matching name. If type doesn't match, then error. *)
-fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
+fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} :
+  stmt * errormsg list * Symtable.symtable =
   let val (newsyms, errs) = foldEither (addDecl Local)
                                        (* Why? Why not empty table? *)
                                        (locsyms: Symtable.symtable)
@@ -444,7 +445,7 @@ fun checkstmt outsyms locsyms fsyms {stree=DeclStmt dlist, pos} =
 
 (** Merge global and local symbols to check each statement in a block,
   * then check that every statement is reachable. *)
-and checkblock outsyms fsyms ((lsyms, stmts): sblock) =
+and checkblock outsyms fsyms ((lsyms, stmts): sblock) : sblock * errormsg list =
     (* lsyms should be empty *)
     let fun chkblockacc [] symacc erracc stmtacc =
           (((symacc, rev stmtacc): sblock), erracc)
@@ -477,10 +478,10 @@ fun listintersect [] _ = []
         a::(listintersect rest (listremove (a, b)))
     else listintersect rest b
 
-(** Find any uninited variables in a block.
+(** Find any uninitialized variables in a block.
   * Propagates a list of unininitialized variables, which are added to at
   * a declaration and removed when one is inited. *)
-fun checkinit stmts =
+fun checkinit stmts : (varname * srcpos) list =
   (* Return a list of variables used in an expression. *)
   let fun usedvars expr = (
           case (#etree expr) of
@@ -611,7 +612,7 @@ fun checkinit stmts =
   end 
 
 
-(** Check if a statement list always returns *)
+(** Check whether a statement list always returns *)
 fun willreturn [] = false
   | willreturn (stmt::stmts) = 
     case (#stree stmt) of
@@ -631,7 +632,7 @@ fun addparams syms [] = syms
 
 (** Procs: Add return type to argument types and call checkblock on the body *)
 fun checkproc gsyms prevfsyms (header as {fname, params, rettype, pos},
-                               sblock (* as (blksyms, stmtlist)*)) =
+                               sblock) : fdefn * errormsg list =
   (* Formerly: add return type to proc's parameter symtable *)
   (* Now add params and return type to outer syms *)
   let val procsyms = Symtable.insert (addparams gsyms params)
@@ -654,8 +655,9 @@ fun checkproc gsyms prevfsyms (header as {fname, params, rettype, pos},
                    (funerrs @ returnerr @ initerrs @ breakerrs))
   end
 
-(** must get new versions of fdefns and main, plus return errors *)
-fun checkprogram (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) =
+(** Analysis returns new versions of fdefns and main, plus errors *)
+fun checkprogram (PGM {iodecls, gdecls, fdefns, gsyms, fsyms, main}) :
+    progtext * errormsg list =
   (* raise if symtables not empty? *)
   let val (newgsyms, gdeclerrs) =
           (* addDecl ignores the 'Global' for the iodecl type *)

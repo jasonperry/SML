@@ -9,7 +9,7 @@ end
 signature SYMTABLE = sig
     (* type symentry *)
     (* structure E: ST_ENTRY *)
-    type symentry (*= E.entry  (* Allowed! Now will be visible? *)*)
+    type symentry (*= E.entry  (* This didn't fix the opaque problem. *) *)
     type symtable
 
     val empty: symtable
@@ -21,7 +21,8 @@ signature SYMTABLE = sig
     val toString: symtable -> string
 end
 
-(** Not an opaque constraint because symentries need to be inspected. *)
+(** Use opaque constraint with 'where type'. 
+  * http://stackoverflow.com/questions/42629811/standard-ml-making-a-type-transparent-with-opaque-signature-ascription *)
 functor SymtableFn (E:ST_ENTRY) :> SYMTABLE where type symentry = E.entry
 = struct
 

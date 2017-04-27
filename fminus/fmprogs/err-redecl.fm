@@ -1,0 +1,8 @@
+main {
+    var i : int;
+    var j : double;
+    var k : bool;
+    var i : bool;  (* Redeclaration of i *)
+    j := 3.4;
+    print j;
+}

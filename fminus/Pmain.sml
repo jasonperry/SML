@@ -46,7 +46,7 @@ fun printErrs (errlist: errormsg list) lexinfo =
   case errlist
    of [] => ()
     | (errstr, pos)::rest => (
-        Location.errMsg lexinfo pos errstr
+        Location.errMsg lexinfo pos errstr (* to stdout?! WTH... *)
         handle Fail _ => printErrs rest lexinfo ) (* compensating... *)
       
 (* Call parser and output C version or errors *)
